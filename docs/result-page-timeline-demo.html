@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>能躺了吗 - 家庭财富地图精简 Demo</title>
+  <style>
+    :root {
+      --ink: #17110e;
+      --muted: #6c756e;
+      --paper: #fffaf1;
+      --paper-soft: #f5efe4;
+      --brown: #230b08;
+      --brown-2: #3c1510;
+      --brown-3: #602319;
+      --gold: #d49a4a;
+      --gold-soft: #f8e7c8;
+      --green: #2f7d57;
+      --green-soft: #e8f2e5;
+      --danger: #d9563f;
+      --danger-soft: #f8e4dc;
+      --line: rgba(47, 31, 24, 0.12);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 14% 8%, rgba(47, 125, 87, 0.12), transparent 26%),
+        radial-gradient(circle at 84% 12%, rgba(212, 154, 74, 0.17), transparent 28%),
+        linear-gradient(180deg, #fbf7ef, #eee7dc);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .board {
+      width: min(1120px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 38px 32px 56px;
+    }
+
+    .board-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 28px;
+      margin-bottom: 28px;
+    }
+
+    .board-head h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .board-head p {
+      max-width: 700px;
+      margin: 10px 0 0;
+      color: #746a61;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .board-note {
+      flex: 0 0 auto;
+      padding: 11px 15px;
+      border: 1px solid rgba(212, 154, 74, 0.24);
+      border-radius: 999px;
+      color: #8a541d;
+      background: rgba(255, 255, 255, 0.74);
+      box-shadow: 0 12px 30px rgba(53, 43, 25, 0.06);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      gap: 34px;
+      align-items: start;
+    }
+
+    .phone-shell {
+      width: 390px;
+      height: 812px;
+      margin: 0 auto;
+      overflow: hidden;
+      position: sticky;
+      top: 24px;
+      border: 1px solid rgba(47, 31, 24, 0.20);
+      border-radius: 40px;
+      background: #1f1713;
+      box-shadow:
+        0 30px 72px rgba(58, 45, 24, 0.22),
+        inset 0 0 0 8px rgba(255, 255, 255, 0.32);
+    }
+
+    .phone-shell::before {
+      content: "";
+      position: absolute;
+      z-index: 20;
+      top: 13px;
+      left: 50%;
+      width: 94px;
+      height: 7px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.34);
+    }
+
+    .screen {
+      height: 100%;
+      overflow-y: auto;
+      position: relative;
+      padding: 52px 18px 98px;
+      background:
+        radial-gradient(circle at 12% 7%, rgba(47, 125, 87, 0.09), transparent 30%),
+        radial-gradient(circle at 86% 18%, rgba(212, 154, 74, 0.12), transparent 28%),
+        linear-gradient(180deg, #fbf8f1 0%, #f2ecdf 100%);
+      scrollbar-width: none;
+    }
+
+    .screen::-webkit-scrollbar { display: none; }
+
+    .screen-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .screen-head span {
+      color: #6c756e;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .screen-head h2 {
+      margin: 4px 0 4px;
+      font-size: 27px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .screen-head p {
+      margin: 0;
+      color: #6d756e;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .monitor-btn {
+      width: 46px;
+      height: 46px;
+      border: 1px solid rgba(212, 154, 74, 0.22);
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      color: #ffd99a;
+      background:
+        radial-gradient(circle, rgba(255, 217, 154, 0.16), transparent 52%),
+        linear-gradient(145deg, #230b08, #4d1b12);
+      box-shadow: 0 14px 28px rgba(43, 20, 10, 0.14);
+      font-weight: 950;
+    }
+
+    .ai-hero {
+      position: relative;
+      overflow: hidden;
+      padding: 20px;
+      border: 1px solid rgba(255, 226, 183, 0.16);
+      border-radius: 18px;
+      color: #fff7ec;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        radial-gradient(circle at 14% 14%, rgba(255, 217, 154, 0.13), transparent 30%),
+        linear-gradient(180deg, #230b08 0%, #37120e 48%, #642519 100%);
+      background-size: 44px 44px, 44px 44px, auto, auto;
+      box-shadow: 0 20px 42px rgba(43, 20, 10, 0.20);
+    }
+
+    .kicker {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: #ffe1ae;
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .spark {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255, 246, 233, 0.10);
+    }
+
+    .ai-hero h3 {
+      margin: 18px 0 11px;
+      font-size: 27px;
+      line-height: 1.16;
+      letter-spacing: 0;
+    }
+
+    .ai-hero p {
+      margin: 0;
+      color: rgba(255, 247, 236, 0.72);
+      font-size: 14px;
+      line-height: 1.62;
+    }
+
+    .hero-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 17px;
+    }
+
+    .hero-metrics div {
+      min-width: 0;
+      padding: 11px 10px;
+      border: 1px solid rgba(255, 246, 233, 0.12);
+      border-radius: 12px;
+      background: rgba(255, 246, 233, 0.08);
+    }
+
+    .hero-metrics span {
+      display: block;
+      color: rgba(255, 247, 236, 0.58);
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .hero-metrics strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 21px;
+      line-height: 1.05;
+    }
+
+    .section {
+      margin-top: 15px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 16px 32px rgba(53, 43, 25, 0.06);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 13px;
+    }
+
+    .section-head span {
+      color: #79827b;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .section-head strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 19px;
+      line-height: 1.25;
+    }
+
+    .section-head b {
+      flex: 0 0 auto;
+      padding: 5px 8px;
+      border-radius: 999px;
+      color: #c94437;
+      background: var(--danger-soft);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .reality-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .reality-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 13px;
+      background: var(--paper-soft);
+    }
+
+    .reality-row span {
+      color: #647068;
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.45;
+    }
+
+    .reality-row strong {
+      align-self: center;
+      font-size: 17px;
+    }
+
+    .reality-row.danger {
+      color: #b83b30;
+      background: var(--danger-soft);
+    }
+
+    .reality-row.warning {
+      background: #fff1df;
+    }
+
+    .section-note {
+      margin: 12px 0 0;
+      color: #536058;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .evidence-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .evidence-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 13px;
+      background: #fffaf2;
+    }
+
+    .evidence-item strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .evidence-item p {
+      margin: 5px 0 0;
+      color: #647068;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .evidence-value {
+      display: grid;
+      justify-items: end;
+      gap: 7px;
+      align-self: start;
+    }
+
+    .evidence-value b {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .pill {
+      padding: 4px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .pill.danger {
+      color: #c94437;
+      background: var(--danger-soft);
+    }
+
+    .pill.warning {
+      color: #b96e20;
+      background: #f8ead8;
+    }
+
+    .pill.good {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .action-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .action-row {
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      gap: 10px;
+      padding: 11px;
+      border-radius: 13px;
+      background: var(--green-soft);
+    }
+
+    .action-row b {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      color: #fff;
+      background: var(--green);
+      font-size: 13px;
+    }
+
+    .action-row span {
+      color: #3e4a42;
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 750;
+    }
+
+    details.full-math {
+      margin-top: 15px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 16px 32px rgba(53, 43, 25, 0.05);
+    }
+
+    details.full-math summary {
+      min-height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 16px;
+      color: #1c271f;
+      font-weight: 950;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    details.full-math summary::-webkit-details-marker { display: none; }
+
+    details.full-math summary span {
+      color: #7a827c;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .math-list {
+      display: grid;
+      gap: 8px;
+      padding: 0 16px 16px;
+    }
+
+    .math-item {
+      padding: 11px;
+      border-radius: 12px;
+      background: var(--paper-soft);
+    }
+
+    .math-item strong {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .math-item small {
+      display: block;
+      margin-top: 6px;
+      color: #69746d;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 15px;
+    }
+
+    .workspace button {
+      min-height: 70px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      padding: 10px;
+      color: #1f2d25;
+      background: rgba(255, 255, 255, 0.78);
+      font-weight: 950;
+    }
+
+    .workspace span {
+      display: block;
+      margin-top: 6px;
+      color: #66726b;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .anchor-line {
+      margin: 14px 0 0;
+      padding: 12px 13px;
+      border-radius: 14px;
+      color: #6b4e30;
+      background: #fff1dc;
+      font-size: 13px;
+      line-height: 1.55;
+      font-weight: 800;
+    }
+
+    .floating-ai {
+      position: sticky;
+      bottom: 16px;
+      z-index: 10;
+      width: fit-content;
+      margin: 18px 0 0 auto;
+      border: 1px solid rgba(255, 221, 169, 0.28);
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 13px;
+      color: #fff7ec;
+      background:
+        radial-gradient(circle at 18% 20%, rgba(255, 218, 148, 0.18), transparent 42%),
+        linear-gradient(145deg, #230b08, #4d1b12);
+      box-shadow: 0 18px 38px rgba(43, 20, 10, 0.28);
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .right-panel {
+      display: grid;
+      gap: 20px;
+    }
+
+    .note-card {
+      padding: 22px;
+      border: 1px solid rgba(31, 45, 37, 0.1);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.74);
+      box-shadow: 0 18px 42px rgba(53, 43, 25, 0.07);
+    }
+
+    .note-card h3 {
+      margin: 0 0 14px;
+      font-size: 21px;
+    }
+
+    .note-card p,
+    .note-card li {
+      color: #5e665f;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .note-card p {
+      margin: 0;
+    }
+
+    .note-card ul,
+    .note-card ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .flow-map {
+      display: grid;
+      gap: 10px;
+    }
+
+    .flow-map div {
+      padding: 14px;
+      border-radius: 15px;
+      background: #f7f1e7;
+    }
+
+    .flow-map strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 15px;
+    }
+
+    .flow-map span {
+      color: #667069;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 920px) {
+      .board {
+        padding: 28px 18px 42px;
+      }
+
+      .board-head,
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .phone-shell {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="board-head">
+      <div>
+        <h1>家庭财富地图 Demo：精简叙事版</h1>
+        <p>这版只保留一条主线：AI 先定调，再拆穿资产错觉，再给关键证据，最后转成行动。公式和完整指标只进入“完整精算”。</p>
+      </div>
+      <div class="board-note">讨论稿 · 不改正式应用</div>
+    </header>
+
+    <section class="layout">
+      <div class="phone-shell" aria-label="家庭财富地图手机原型">
+        <div class="screen">
+          <header class="screen-head">
+            <div>
+              <span>规划</span>
+              <h2>家庭财富地图</h2>
+              <p>先看真实可调用的钱，再看目标能不能撑住。</p>
+            </div>
+            <div class="monitor-btn">◎</div>
+          </header>
+
+          <section class="ai-hero">
+            <div class="kicker">
+              <span class="spark">✦</span>
+              <span>懂你的 AI</span>
+            </div>
+            <h3>你不是没资产，而是大部分资产不能真正帮你扛风险。</h3>
+            <p>房子让账面变好看，但生息资产只有 20 万，负债却有 500 万。真正的问题是：能动用、能增值、能抗风险的钱太少。</p>
+            <div class="hero-metrics">
+              <div>
+                <span>今天的答案</span>
+                <strong>半躺可行</strong>
+              </div>
+              <div>
+                <span>账面资产</span>
+                <strong>870万</strong>
+              </div>
+              <div>
+                <span>生息资产</span>
+                <strong>20万</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <span>理性的我</span>
+                <strong>先重构真假资产</strong>
+              </div>
+              <b>认知纠偏</b>
+            </div>
+            <div class="reality-grid">
+              <div class="reality-row warning">
+                <span>自用房产<br>非生息资产，仅使用价值</span>
+                <strong>850万</strong>
+              </div>
+              <div class="reality-row">
+                <span>生息资产<br>货币资金 + 大额存单 + 投资资产</span>
+                <strong>20万</strong>
+              </div>
+              <div class="reality-row danger">
+                <span>总负债<br>剩余房贷本金 + 其他负债</span>
+                <strong>500万</strong>
+              </div>
+            </div>
+            <p class="section-note">评价：家庭生息资产仅 20 万，抗风险底座薄弱。账面资产和真正可支撑未来的钱，出现明显错位。</p>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <span>关键证据</span>
+                <strong>只看最影响结论的 3 个指标</strong>
+              </div>
+              <b>2 危险</b>
+            </div>
+            <div class="evidence-list">
+              <div class="evidence-item">
+                <div>
+                  <strong>金融性资产负债率</strong>
+                  <p>抛开房子后，金融资产完全扛不住现有负债。</p>
+                </div>
+                <div class="evidence-value">
+                  <span class="pill danger">危险</span>
+                  <b>2500%</b>
+                </div>
+              </div>
+              <div class="evidence-item">
+                <div>
+                  <strong>投资净值增长率</strong>
+                  <p>理财收益对收入贡献很小，资产几乎不会自己长大。</p>
+                </div>
+                <div class="evidence-value">
+                  <span class="pill danger">危险</span>
+                  <b>0.42%</b>
+                </div>
+              </div>
+              <div class="evidence-item">
+                <div>
+                  <strong>财务负担率</strong>
+                  <p>固定开销压力不小，但仍有调整窗口。</p>
+                </div>
+                <div class="evidence-value">
+                  <span class="pill warning">临近</span>
+                  <b>36.84%</b>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <div>
+                <span>行动的我</span>
+                <strong>先补流动性，再扩大生息资产</strong>
+              </div>
+              <b>本周执行</b>
+            </div>
+            <div class="action-list">
+              <div class="action-row">
+                <b>1</b>
+                <span>留 8 万应急资金单独存放，剩余 2 万转入中低风险固收。</span>
+              </div>
+              <div class="action-row">
+                <b>2</b>
+                <span>梳理 20 万非房贷负债，优先结清年化高于 4% 的部分。</span>
+              </div>
+              <div class="action-row">
+                <b>3</b>
+                <span>每月从自由储蓄中划出 8000 元，逐步扩大生息资产。</span>
+              </div>
+            </div>
+            <p class="anchor-line">你具备优秀的储蓄能力，只要优化负债结构、盘活金融资产，财务状况会稳步走向健康。</p>
+          </section>
+
+          <details class="full-math">
+            <summary>
+              <strong>查看完整精算</strong>
+              <span>7 个指标 / 公式 / 门槛</span>
+            </summary>
+            <div class="math-list">
+              <div class="math-item">
+                <strong>紧急预备金倍数 <span class="pill good">达标</span></strong>
+                <small>10 ÷ (33 ÷ 12) ≈ 3.64 倍，门槛 3-6 倍。</small>
+              </div>
+              <div class="math-item">
+                <strong>传统资产负债率 <span class="pill danger">危险</span></strong>
+                <small>500 ÷ 870 × 100% ≈ 57.47%，门槛 ≤ 50%。</small>
+              </div>
+              <div class="math-item">
+                <strong>财务负担率 <span class="pill warning">临近</span></strong>
+                <small>35 ÷ 95 × 100% ≈ 36.84%，门槛 ≤ 40%。</small>
+              </div>
+              <div class="math-item">
+                <strong>总储蓄率 <span class="pill good">达标</span></strong>
+                <small>(95 - 47) ÷ 95 × 100% ≈ 50.53%，门槛 ≥ 25%。</small>
+              </div>
+            </div>
+          </details>
+
+          <section class="workspace">
+            <button>我的资产<span>更新结构</span></button>
+            <button>我的目标<span>维护计划</span></button>
+            <button>AI 监测<span>继续补充</span></button>
+          </section>
+
+          <div class="floating-ai">◎ AI 持续监测</div>
+        </div>
+      </div>
+
+      <aside class="right-panel">
+        <section class="note-card">
+          <h3>这版的信息框架</h3>
+          <div class="flow-map">
+            <div>
+              <strong>1. 懂你的 AI</strong>
+              <span>先用一句话定调：不是没资产，而是资产不能有效扛风险。</span>
+            </div>
+            <div>
+              <strong>2. 理性的我</strong>
+              <span>不先讲公式，先重构真假资产，拆穿账面资产错觉。</span>
+            </div>
+            <div>
+              <strong>3. 关键证据</strong>
+              <span>只展示 3 个最能证明结论的指标，不平铺 7 个。</span>
+            </div>
+            <div>
+              <strong>4. 行动的我</strong>
+              <span>把焦虑转成 3 个本周动作，并用一句心理锚点收束。</span>
+            </div>
+            <div>
+              <strong>5. 完整精算</strong>
+              <span>公式、代入过程和门槛全部保留，但默认收起。</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="note-card">
+          <h3>设计原则</h3>
+          <ol>
+            <li>首页不展示公式。</li>
+            <li>首页不展示 7 个指标。</li>
+            <li>先讲资产错觉，再讲指标。</li>
+            <li>行动方案要比指标更醒目。</li>
+          </ol>
+        </section>
+
+        <section class="note-card">
+          <h3>下一步可讨论</h3>
+          <p>如果这个信息框架成立，下一轮再讨论视觉表现：是否加轻微时间线动效、真假资产是否用图形化对比、完整精算是否用底部弹层。</p>
+        </section>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

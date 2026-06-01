@@ -1,0 +1,1713 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>能躺了吗 - AI 首次问诊原型</title>
+  <style>
+    :root {
+      --ink: #17110e;
+      --muted: #75685f;
+      --cream: #fff8ed;
+      --paper: #fffaf1;
+      --gold: #d49a4a;
+      --gold-soft: #f9e5bf;
+      --brown: #28100d;
+      --brown-2: #4a1e16;
+      --brown-3: #7a3a24;
+      --danger: #d9563f;
+      --line: rgba(47, 31, 24, .12);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 4%, rgba(122, 58, 36, .14), transparent 24%),
+        radial-gradient(circle at 85% 8%, rgba(212, 154, 74, .14), transparent 23%),
+        linear-gradient(180deg, #fbf7ef, #eee7dc);
+    }
+
+    .board {
+      width: min(1180px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 38px 32px 52px;
+    }
+
+    .board-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 28px;
+      margin-bottom: 30px;
+    }
+
+    .board-head h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .board-head p {
+      max-width: 760px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.58;
+    }
+
+    .board-note {
+      flex: 0 0 auto;
+      padding: 11px 15px;
+      border: 1px solid rgba(212, 154, 74, .24);
+      border-radius: 999px;
+      color: #8a541d;
+      background: rgba(255, 255, 255, .74);
+      box-shadow: 0 12px 30px rgba(53, 43, 25, .06);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      gap: 34px;
+      align-items: start;
+    }
+
+    .phone-shell {
+      width: 390px;
+      height: 812px;
+      margin: 0 auto;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid rgba(47, 31, 24, .20);
+      border-radius: 40px;
+      background: #1f1713;
+      box-shadow:
+        0 30px 72px rgba(58, 45, 24, .22),
+        inset 0 0 0 8px rgba(255, 255, 255, .32);
+    }
+
+    .phone-shell::before {
+      content: "";
+      position: absolute;
+      z-index: 20;
+      top: 13px;
+      left: 50%;
+      width: 94px;
+      height: 7px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .34);
+    }
+
+    .home-screen {
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+      padding: 82px 24px 24px;
+      color: var(--cream);
+      background:
+        linear-gradient(180deg, rgba(35, 15, 13, .98) 0%, rgba(58, 23, 17, .96) 42%, rgba(112, 54, 31, .90) 78%, rgba(222, 171, 117, .86) 100%),
+        #2b130f;
+    }
+
+    .home-screen.chat-mode,
+    .home-screen.result-mode {
+      overflow-y: auto;
+      scrollbar-width: none;
+      padding-top: 52px;
+    }
+
+    .home-screen.chat-mode::-webkit-scrollbar,
+    .home-screen.result-mode::-webkit-scrollbar {
+      display: none;
+    }
+
+    .home-screen::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, .045) 1px, transparent 1px),
+        linear-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px);
+      background-size: 44px 44px;
+      opacity: .55;
+      pointer-events: none;
+    }
+
+    .home-screen::after {
+      content: "";
+      position: absolute;
+      left: 7%;
+      right: 7%;
+      bottom: 22px;
+      height: 54px;
+      border: 1px solid rgba(255, 248, 237, .10);
+      border-radius: 999px 999px 30px 30px;
+      background:
+        radial-gradient(circle at 50% 10%, rgba(255, 224, 174, .38), transparent 46%),
+        linear-gradient(180deg, rgba(255, 248, 237, .14), rgba(255, 248, 237, .04));
+      opacity: .28;
+      pointer-events: none;
+    }
+
+    .content {
+      position: relative;
+      z-index: 2;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 12px 0 48px;
+      transition: margin .35s ease;
+    }
+
+    .chat-mode .topbar,
+    .result-mode .topbar {
+      margin: 6px 0 18px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: rgba(255, 248, 237, .90);
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .brand-mark {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      color: #2b130f;
+      background: var(--cream);
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .ai-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid rgba(255, 248, 237, .17);
+      border-radius: 12px;
+      color: #ffe0ae;
+      background: rgba(255, 248, 237, .11);
+      font-size: 12px;
+      font-weight: 900;
+      backdrop-filter: blur(10px);
+    }
+
+    .ai-status i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ffe0ae;
+      box-shadow: 0 0 0 7px rgba(255, 224, 174, .12);
+    }
+
+    .headline {
+      width: 92%;
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    .home-screen.play .headline {
+      animation: rise .56s cubic-bezier(.2, .8, .2, 1) .08s forwards;
+    }
+
+    .chat-mode .headline,
+    .result-mode .headline {
+      display: none;
+    }
+
+    .headline h2 {
+      margin: 0;
+      font-size: 27px;
+      line-height: 1.17;
+      letter-spacing: 0;
+      font-weight: 900;
+    }
+
+    .headline p {
+      margin: 13px 0 0;
+      color: rgba(255, 248, 237, .74);
+      font-size: 14px;
+      line-height: 1.62;
+    }
+
+    .stage {
+      flex: 1;
+      position: relative;
+      min-height: 0;
+    }
+
+    .dialog-stage,
+    .loading-stage,
+    .question-card,
+    .chat-panel,
+    .handoff-panel,
+    .result-panel {
+      position: absolute;
+      left: 0;
+      right: 0;
+    }
+
+    .dialog-stage {
+      top: 74px;
+      display: grid;
+      gap: 12px;
+      pointer-events: none;
+    }
+
+    .message {
+      width: fit-content;
+      max-width: 88%;
+      padding: 13px 14px;
+      border: 1px solid rgba(255, 248, 237, .20);
+      border-radius: 18px;
+      color: rgba(255, 248, 237, .96);
+      background: rgba(255, 248, 237, .13);
+      box-shadow: 0 16px 34px rgba(16, 8, 5, .18);
+      backdrop-filter: blur(12px);
+      font-size: 14px;
+      line-height: 1.48;
+      font-weight: 800;
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    .message.first { border-top-left-radius: 6px; }
+    .message.second { margin-left: 26px; }
+
+    .message.third {
+      max-width: 78%;
+      margin-left: 58px;
+      color: var(--ink);
+      background: rgba(255, 248, 237, .94);
+    }
+
+    .home-screen.play .message.first {
+      animation: rise .46s cubic-bezier(.2, .8, .2, 1) .72s forwards;
+    }
+
+    .home-screen.play .message.second {
+      animation: rise .46s cubic-bezier(.2, .8, .2, 1) 1.26s forwards;
+    }
+
+    .home-screen.play .message.third {
+      animation: rise .46s cubic-bezier(.2, .8, .2, 1) 1.80s forwards;
+    }
+
+    .home-screen.play .dialog-stage {
+      animation: stageOut .42s ease 2.62s forwards;
+    }
+
+    .loading-stage {
+      top: 210px;
+      display: flex;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(8px);
+    }
+
+    .loading-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      padding: 0 15px;
+      border: 1px solid rgba(255, 248, 237, .18);
+      border-radius: 999px;
+      color: rgba(255, 248, 237, .88);
+      background: rgba(255, 248, 237, .12);
+      box-shadow: 0 14px 32px rgba(16, 8, 5, .16);
+      backdrop-filter: blur(12px);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .loading-pill span {
+      display: inline-flex;
+      gap: 5px;
+    }
+
+    .loading-pill i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #ffe0ae;
+      animation: dot 1.4s ease-in-out infinite;
+    }
+
+    .loading-pill i:nth-child(2) { animation-delay: .15s; }
+    .loading-pill i:nth-child(3) { animation-delay: .30s; }
+
+    .home-screen.play .loading-stage {
+      animation: rise .32s cubic-bezier(.2,.8,.2,1) 2.86s forwards, stageOut .30s ease 3.66s forwards;
+    }
+
+    .question-card {
+      top: 124px;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, .36);
+      border-radius: 26px;
+      color: var(--ink);
+      background: rgba(255, 253, 247, .95);
+      box-shadow: 0 22px 52px rgba(32, 18, 8, .22);
+      backdrop-filter: blur(18px);
+      opacity: 0;
+      transform: translateY(24px) scale(.98);
+    }
+
+    .home-screen.question-ready .question-card {
+      animation: panelIn .56s cubic-bezier(.16, .92, .18, 1) forwards;
+    }
+
+    .home-screen.dialog-gone .dialog-stage,
+    .home-screen.loading-gone .loading-stage,
+    .chat-mode .dialog-stage,
+    .chat-mode .loading-stage,
+    .chat-mode .question-card,
+    .result-mode .dialog-stage,
+    .result-mode .loading-stage,
+    .result-mode .question-card,
+    .result-mode .chat-panel {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .question-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      color: #5f5147;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .scan-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 0 7px rgba(212, 154, 74, .16);
+    }
+
+    .question-list {
+      display: grid;
+      gap: 9px;
+      margin-top: 11px;
+    }
+
+    .question {
+      min-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 13px;
+      overflow: hidden;
+      border: 1px solid rgba(47, 31, 24, .09);
+      border-radius: 16px;
+      color: #2f251f;
+      background: rgba(255, 255, 255, .86);
+      box-shadow: 0 8px 18px rgba(53, 43, 25, .05);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 900;
+      line-height: 1.25;
+      cursor: pointer;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: transform .24s ease, border-color .24s ease, background .24s ease;
+    }
+
+    .question:hover {
+      transform: translateY(-1px);
+      border-color: rgba(212, 154, 74, .44);
+    }
+
+    .home-screen.question-ready .question:nth-child(1) {
+      animation: rise .38s cubic-bezier(.2, .8, .2, 1) .30s forwards;
+    }
+
+    .home-screen.question-ready .question:nth-child(2) {
+      animation: rise .38s cubic-bezier(.2, .8, .2, 1) .52s forwards;
+    }
+
+    .home-screen.question-ready .question:nth-child(3) {
+      animation: rise .38s cubic-bezier(.2, .8, .2, 1) .74s forwards;
+    }
+
+    .question.primary {
+      border-color: rgba(212, 154, 74, .34);
+      background: #fff3dd;
+    }
+
+    .question span { flex: 1; }
+
+    .question em {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border-radius: 9px;
+      color: #8a541d;
+      background: var(--gold-soft);
+      font-style: normal;
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .chat-panel,
+    .result-panel {
+      top: 0;
+      display: none;
+    }
+
+    .chat-mode .stage,
+    .handoff-mode .stage {
+      flex: 0 0 auto;
+      min-height: 1080px;
+    }
+
+    .result-mode .stage {
+      flex: 0 0 auto;
+      min-height: 1320px;
+    }
+
+    .chat-mode .chat-panel,
+    .handoff-mode .handoff-panel,
+    .result-mode .result-panel {
+      display: block;
+    }
+
+    .handoff-mode .chat-panel {
+      opacity: 0;
+      transform: translateY(-18px);
+      transition: opacity .42s ease, transform .42s ease;
+      pointer-events: none;
+    }
+
+    .chat-feed {
+      display: grid;
+      gap: 10px;
+      padding-bottom: 92px;
+    }
+
+    .bubble {
+      width: fit-content;
+      max-width: 92%;
+      padding: 12px 13px;
+      border-radius: 17px;
+      font-size: 13px;
+      line-height: 1.52;
+      font-weight: 800;
+      box-shadow: 0 12px 28px rgba(19, 8, 5, .12);
+      animation: bubbleIn .28s ease both;
+    }
+
+    .bubble.user {
+      margin-left: auto;
+      color: var(--cream);
+      background: linear-gradient(135deg, #8c432b, #5a2118);
+      border-bottom-right-radius: 5px;
+    }
+
+    .bubble.ai {
+      color: var(--ink);
+      background: rgba(255, 250, 241, .96);
+      border: 1px solid rgba(255, 248, 237, .22);
+      border-top-left-radius: 5px;
+    }
+
+    .bubble.summary {
+      max-width: 96%;
+      color: #5e4e42;
+      background: rgba(255, 248, 237, .78);
+      border: 1px solid rgba(212, 154, 74, .24);
+    }
+
+    .input-dock {
+      position: sticky;
+      z-index: 5;
+      bottom: 0;
+      margin: 14px -4px 0;
+      padding: 12px;
+      border: 1px solid rgba(255, 248, 237, .26);
+      border-radius: 22px;
+      background: rgba(255, 248, 237, .92);
+      box-shadow: 0 -16px 38px rgba(29, 12, 8, .22);
+      backdrop-filter: blur(18px);
+    }
+
+    .prompt-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 9px;
+      color: #665549;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .prompt-label span {
+      padding: 4px 8px;
+      border-radius: 999px;
+      color: #8a541d;
+      background: var(--gold-soft);
+    }
+
+    .answer-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .answer-grid.two {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .answer-option,
+    .next-action {
+      min-height: 44px;
+      border: 1px solid rgba(47, 31, 24, .10);
+      border-radius: 14px;
+      color: #2f251f;
+      background: #fffaf1;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .2s ease, border-color .2s ease, background .2s ease;
+    }
+
+    .answer-option:hover,
+    .next-action:hover {
+      transform: translateY(-1px);
+      border-color: rgba(212, 154, 74, .48);
+      background: #fff3dd;
+    }
+
+    .answer-option.selected {
+      color: #7a3a24;
+      border-color: rgba(212, 154, 74, .65);
+      background: #fff0d2;
+    }
+
+    .confirm-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .ghost-input {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border: 1px dashed rgba(47, 31, 24, .18);
+      border-radius: 13px;
+      color: #8a7a6d;
+      background: rgba(255, 250, 241, .70);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .confirm-button {
+      min-width: 72px;
+      border: 0;
+      border-radius: 13px;
+      color: #fff8ed;
+      background: linear-gradient(135deg, #a85f32, #6f2a1d);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+
+    .typing {
+      width: fit-content;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: 14px;
+      color: var(--ink);
+      background: rgba(255, 250, 241, .92);
+      animation: bubbleIn .28s ease both;
+    }
+
+    .typing i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--gold);
+      animation: dot 1.2s ease-in-out infinite;
+    }
+
+    .typing i:nth-child(2) { animation-delay: .12s; }
+    .typing i:nth-child(3) { animation-delay: .24s; }
+
+    .handoff-panel,
+    .result-panel {
+      display: none;
+      top: 0;
+    }
+
+    .handoff-panel {
+      padding: 84px 0 0;
+    }
+
+    .handoff-card {
+      min-height: 250px;
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      gap: 16px;
+      padding: 28px 22px;
+      border: 1px solid rgba(255, 224, 174, .30);
+      border-radius: 28px;
+      color: var(--cream);
+      text-align: center;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(212, 154, 74, .26), transparent 46%),
+        rgba(43, 19, 15, .72);
+      box-shadow: 0 22px 58px rgba(19, 8, 5, .28);
+      backdrop-filter: blur(18px);
+      animation: handoffIn .5s cubic-bezier(.2, .9, .2, 1) both;
+    }
+
+    .handoff-orbit {
+      width: 58px;
+      height: 58px;
+      position: relative;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255, 224, 174, .16);
+    }
+
+    .handoff-orbit::before,
+    .handoff-orbit::after {
+      content: "";
+      position: absolute;
+      inset: -7px;
+      border: 1px solid rgba(255, 224, 174, .32);
+      border-radius: 50%;
+      animation: pulseRing 1.8s ease-in-out infinite;
+    }
+
+    .handoff-orbit::after {
+      inset: -15px;
+      animation-delay: .35s;
+    }
+
+    .handoff-orbit b {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 15px;
+      color: #2b130f;
+      background: #ffe0ae;
+      font-size: 13px;
+    }
+
+    .handoff-card h3 {
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.28;
+    }
+
+    .handoff-card p {
+      max-width: 260px;
+      margin: 0;
+      color: rgba(255, 248, 237, .70);
+      font-size: 13px;
+      line-height: 1.55;
+      font-weight: 760;
+    }
+
+    .handoff-steps {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 7px;
+    }
+
+    .handoff-steps span {
+      padding: 6px 8px;
+      border: 1px solid rgba(255, 224, 174, .24);
+      border-radius: 999px;
+      color: #ffe0ae;
+      background: rgba(255, 248, 237, .08);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .result-panel {
+      padding-bottom: 150px;
+    }
+
+    .result-hero,
+    .result-card {
+      padding: 15px;
+      border: 1px solid rgba(255, 248, 237, .22);
+      border-radius: 22px;
+      color: var(--ink);
+      background: rgba(255, 250, 241, .95);
+      box-shadow: 0 18px 42px rgba(19, 8, 5, .18);
+      margin-bottom: 12px;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .decision-tile {
+      min-height: 78px;
+      padding: 12px;
+      border: 1px solid rgba(47, 31, 24, .08);
+      border-radius: 16px;
+      background: rgba(255, 250, 241, .72);
+    }
+
+    .decision-tile span {
+      display: block;
+      color: #7a6555;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .decision-tile b {
+      display: block;
+      margin-top: 7px;
+      font-size: 23px;
+      line-height: 1;
+    }
+
+    .decision-tile strong {
+      display: block;
+      margin-top: 7px;
+      color: #8a541d;
+      font-size: 12px;
+    }
+
+    .result-hero {
+      background:
+        radial-gradient(circle at 12% 0%, rgba(212, 154, 74, .22), transparent 42%),
+        linear-gradient(135deg, #fffaf1, #f7dfb8);
+    }
+
+    .section-kicker {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 9px;
+      color: #7a6555;
+      font-size: 12px;
+      font-weight: 950;
+    }
+
+    .section-kicker span {
+      color: #8a541d;
+      background: rgba(212, 154, 74, .16);
+      border-radius: 999px;
+      padding: 5px 8px;
+    }
+
+    .result-hero h3,
+    .result-card h3 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.32;
+    }
+
+    .result-hero p,
+    .result-card p {
+      margin: 8px 0 0;
+      color: #67584d;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .sharp {
+      display: block;
+      margin-top: 9px;
+      color: var(--danger);
+      font-size: 18px;
+      line-height: 1.32;
+      font-weight: 950;
+    }
+
+    .metric-strip {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      padding-bottom: 6px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .metric-strip::-webkit-scrollbar {
+      display: none;
+    }
+
+    .metric-mini {
+      min-width: 134px;
+      padding: 11px;
+      border: 1px solid rgba(47, 31, 24, .10);
+      border-radius: 15px;
+      background: #fffaf1;
+    }
+
+    .metric-mini span {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: #66564a;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .metric-mini em {
+      color: var(--danger);
+      font-style: normal;
+    }
+
+    .metric-mini.warn em {
+      color: #b87321;
+    }
+
+    .metric-mini.good em {
+      color: #7a4c18;
+    }
+
+    .metric-mini b {
+      display: block;
+      margin-top: 9px;
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .metric-mini small {
+      display: block;
+      margin-top: 8px;
+      color: #7c7068;
+      font-size: 11px;
+      line-height: 1.38;
+    }
+
+    .action-list {
+      display: grid;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .action-item {
+      display: grid;
+      grid-template-columns: 27px 1fr;
+      gap: 9px;
+      padding: 11px;
+      border-radius: 15px;
+      color: #4f4036;
+      background: #f6ead8;
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 820;
+    }
+
+    .action-item b {
+      width: 27px;
+      height: 27px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      color: #fff8ed;
+      background: #7a3a24;
+      font-size: 12px;
+    }
+
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .workspace-card {
+      min-height: 126px;
+      padding: 14px;
+      border: 1px solid rgba(255, 248, 237, .18);
+      border-radius: 20px;
+      color: var(--ink);
+      background: rgba(255, 250, 241, .93);
+      box-shadow: 0 16px 34px rgba(19, 8, 5, .14);
+    }
+
+    .workspace-card header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 11px;
+    }
+
+    .workspace-card h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
+    .workspace-card header span {
+      color: #8a541d;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .workspace-card b {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .workspace-card p {
+      margin: 8px 0 0;
+      color: #67584d;
+      font-size: 11px;
+      line-height: 1.45;
+      font-weight: 760;
+    }
+
+    .mini-bar {
+      height: 8px;
+      margin-top: 12px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #efe2cf;
+    }
+
+    .mini-bar i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #7a3a24, #d49a4a);
+    }
+
+    .ai-planner-entry {
+      position: sticky;
+      z-index: 8;
+      bottom: 74px;
+      display: grid;
+      grid-template-columns: 34px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin: 16px 0 12px;
+      padding: 12px;
+      border: 1px solid rgba(255, 224, 174, .36);
+      border-radius: 20px;
+      color: var(--cream);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(212, 154, 74, .28), transparent 36%),
+        rgba(43, 19, 15, .88);
+      box-shadow: 0 18px 46px rgba(19, 8, 5, .32);
+      backdrop-filter: blur(18px);
+    }
+
+    .ai-planner-entry .spark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 13px;
+      color: #2b130f;
+      background: #ffe0ae;
+      font-size: 17px;
+      font-weight: 950;
+    }
+
+    .ai-planner-entry strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .ai-planner-entry span {
+      display: block;
+      margin-top: 3px;
+      color: rgba(255, 248, 237, .64);
+      font-size: 11px;
+      line-height: 1.3;
+      font-weight: 760;
+    }
+
+    .ai-planner-entry button {
+      min-width: 54px;
+      min-height: 34px;
+      border: 0;
+      border-radius: 12px;
+      color: #2b130f;
+      background: #ffe0ae;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 950;
+    }
+
+    .bottom-nav {
+      position: sticky;
+      z-index: 9;
+      bottom: 0;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 9px;
+      border: 1px solid rgba(255, 248, 237, .24);
+      border-radius: 22px;
+      background: rgba(255, 250, 241, .94);
+      box-shadow: 0 -18px 42px rgba(19, 8, 5, .22);
+      backdrop-filter: blur(18px);
+    }
+
+    .bottom-nav button {
+      min-height: 48px;
+      border: 0;
+      border-radius: 15px;
+      color: #6b5a4d;
+      background: transparent;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .nav-dot {
+      display: block;
+      width: 7px;
+      height: 7px;
+      margin: 0 auto 6px;
+      border-radius: 50%;
+      background: rgba(107, 90, 77, .38);
+    }
+
+    .bottom-nav .active {
+      color: #2b130f;
+      background: #f4dfbd;
+    }
+
+    .bottom-nav .active .nav-dot {
+      background: #7a3a24;
+      box-shadow: 0 0 0 6px rgba(122, 58, 36, .10);
+    }
+
+    .replay {
+      position: absolute;
+      z-index: 20;
+      right: 16px;
+      bottom: 16px;
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255, 255, 255, .32);
+      border-radius: 14px;
+      color: var(--cream);
+      background: rgba(255, 248, 237, .12);
+      backdrop-filter: blur(10px);
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .side {
+      display: grid;
+      gap: 18px;
+    }
+
+    .section {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, .70);
+      box-shadow: 0 18px 38px rgba(53, 43, 25, .07);
+    }
+
+    .section h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .section p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .step b {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      color: #fff8ed;
+      background: #7a3a24;
+      font-size: 13px;
+    }
+
+    .step div {
+      padding: 12px 13px;
+      border: 1px solid rgba(47, 31, 24, .08);
+      border-radius: 14px;
+      background: #fffaf1;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+
+    .step span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .tokens {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .tokens span {
+      padding: 8px 10px;
+      border: 1px solid rgba(212, 154, 74, .18);
+      border-radius: 999px;
+      color: #8a541d;
+      background: rgba(255, 255, 255, .72);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    @media (max-width: 920px) {
+      .layout,
+      .board-head {
+        grid-template-columns: 1fr;
+        display: block;
+      }
+
+      .board-note {
+        display: inline-flex;
+        margin-top: 16px;
+      }
+    }
+
+    @keyframes dot {
+      0%, 100% { transform: translateY(0); opacity: .45; }
+      50% { transform: translateY(-3px); opacity: 1; }
+    }
+
+    @keyframes rise {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes stageOut {
+      to { opacity: 0; transform: translateY(-8px); }
+    }
+
+    @keyframes panelIn {
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes bubbleIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes handoffIn {
+      from { opacity: 0; transform: translateY(18px) scale(.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes pulseRing {
+      0%, 100% { transform: scale(.96); opacity: .35; }
+      50% { transform: scale(1.08); opacity: .82; }
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="board-head">
+      <div>
+        <h1>首页可交互原型：AI 消息流问诊</h1>
+        <p>首页启动动效保持不变。点击第一个入口后，AI 一个问题一个问题追问，全部回答后进入正式规划页：底部三栏导航出现，AI 作为规划页里的长期入口保留。</p>
+      </div>
+      <div class="board-note">深色风格 · 单题推进 · 已自检文案</div>
+    </header>
+
+    <section class="layout">
+      <div class="phone-shell">
+        <div class="home-screen play" id="demoScreen">
+          <div class="content">
+            <div class="topbar">
+              <div class="brand"><span class="brand-mark">躺</span>能躺了吗？</div>
+              <div class="ai-status"><i></i>AI 在线</div>
+            </div>
+
+            <section class="headline">
+              <h2>你现在的财务焦虑，到底是不是多想？</h2>
+              <p>不是安慰你，也不是吓你。我们会用你的真实数据，帮你看清哪些担心只是情绪，哪些风险已经写在数字里。</p>
+            </section>
+
+            <section class="stage">
+              <div class="dialog-stage">
+                <div class="message first">你可能不是想躺平。</div>
+                <div class="message second">你只是想知道，自己到底有没有退路。</div>
+                <div class="message third">先选一个最担心的问题，我来帮你算清楚。</div>
+              </div>
+
+              <div class="loading-stage">
+                <div class="loading-pill">
+                  <span><i></i><i></i><i></i></span>
+                  正在整理常见财务焦虑
+                </div>
+              </div>
+
+              <section class="question-card">
+                <div class="question-head">
+                  <span class="scan-dot"></span>
+                  <span>选一个最担心的问题，我来帮你算清楚</span>
+                </div>
+                <div class="question-list">
+                  <button class="question primary" type="button" data-flow="plan"><span>生成我的家庭财务规划</span><em>1</em></button>
+                  <button class="question" type="button" data-flow="goal-case"><span>目标都想要，最后谁先出局？</span><em>2</em></button>
+                  <button class="question" type="button" data-flow="spend-case"><span>这笔大钱，是消费还是透支？</span><em>3</em></button>
+                </div>
+              </section>
+
+              <section class="chat-panel" aria-label="AI 聊天问诊">
+                <div class="chat-feed" id="chatFeed"></div>
+                <div class="input-dock" id="inputDock"></div>
+              </section>
+
+              <section class="handoff-panel" aria-label="生成规划页过渡">
+                <div class="handoff-card">
+                  <div class="handoff-orbit"><b>AI</b></div>
+                  <div>
+                    <h3>正在把对话整理成你的规划页</h3>
+                    <p>我会把刚才的回答变成可持续维护的家庭财务地图，而不是只给一份一次性报告。</p>
+                  </div>
+                  <div class="handoff-steps">
+                    <span>资产归档</span>
+                    <span>目标分层</span>
+                    <span>指标校验</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="result-panel" aria-label="规划页工作台">
+                <div class="result-hero">
+                  <div class="section-kicker">懂你的 AI <span>完整规划版</span></div>
+                  <h3>这不是一份记账结果，而是一张家庭人生计划的压力图。</h3>
+                  <p>按当前信息看，必要目标基本可规划，但想要目标会明显挤压“少工作”和“提前躺”的空间。</p>
+                  <strong class="sharp">真正要警惕的不是目标多，而是目标没有分层。</strong>
+                  <div class="decision-grid">
+                    <div class="decision-tile">
+                      <span>今天的答案</span>
+                      <b>半躺可行</b>
+                      <strong>先保必要目标</strong>
+                    </div>
+                    <div class="decision-tile">
+                      <span>覆盖后余量</span>
+                      <b>82%</b>
+                      <strong>还需取舍</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="result-card">
+                  <div class="section-kicker">理性的我 <span>7 个核心指标</span></div>
+                  <h3>证据层必须完整，不跟着单个场景缩窄。</h3>
+                  <div class="metric-strip">
+                    <div class="metric-mini warn"><span>净资产率<em>预警</em></span><b>42%</b><small>家底能支撑一部分目标，但还没有完全沉淀。</small></div>
+                    <div class="metric-mini good"><span>资产负债率<em>达标</em></span><b>29%</b><small>债务没有压穿家庭底盘。</small></div>
+                    <div class="metric-mini good"><span>年度结余率<em>达标</em></span><b>38%</b><small>未来目标仍有稳定燃料。</small></div>
+                    <div class="metric-mini warn"><span>支出收入比<em>预警</em></span><b>62%</b><small>生活支出已经占走大半收入。</small></div>
+                    <div class="metric-mini warn"><span>目标覆盖率<em>预警</em></span><b>82%</b><small>必要目标能碰到边，但想要目标需要取舍。</small></div>
+                    <div class="metric-mini"><span>净资产覆盖<em>危险</em></span><b>31%</b><small>不算未来收入，现在家底还不够稳。</small></div>
+                    <div class="metric-mini"><span>收入依赖度<em>危险</em></span><b>64%</b><small>计划仍明显依赖未来持续工作。</small></div>
+                  </div>
+                </div>
+
+                <div class="result-card">
+                  <div class="section-kicker">理性行动的我 <span>本周可执行</span></div>
+                  <h3>先保底线，再谈想要。</h3>
+                  <div class="action-list">
+                    <div class="action-item"><b>1</b><span>把所有未来目标分成“必须要”和“想要”，先只测必须目标是否能覆盖。</span></div>
+                    <div class="action-item"><b>2</b><span>给每个想要目标做一个延后 3 年或降配 20% 的版本，比较覆盖率变化。</span></div>
+                    <div class="action-item"><b>3</b><span>把年度结余拆成稳定结余和不确定结余，长期规划只使用稳定部分。</span></div>
+                  </div>
+                </div>
+
+                <div class="workspace-grid">
+                  <article class="workspace-card">
+                    <header>
+                      <h3>我的资产</h3>
+                      <span>查看</span>
+                    </header>
+                    <b>85 万</b>
+                    <p>当前净资产。现金、房产、理财和负债后续在这里维护。</p>
+                    <div class="mini-bar"><i style="width: 42%"></i></div>
+                  </article>
+
+                  <article class="workspace-card">
+                    <header>
+                      <h3>我的目标</h3>
+                      <span>编辑</span>
+                    </header>
+                    <b>5 个</b>
+                    <p>必须目标 3 个，想要目标 2 个。AI 会持续判断取舍压力。</p>
+                    <div class="mini-bar"><i style="width: 68%"></i></div>
+                  </article>
+                </div>
+
+                <div class="ai-planner-entry">
+                  <div class="spark">AI</div>
+                  <div>
+                    <strong>继续问 AI</strong>
+                    <span>补充情况、测试决定、调整目标</span>
+                  </div>
+                  <button type="button">打开</button>
+                </div>
+
+                <nav class="bottom-nav" aria-label="底部导航">
+                  <button type="button"><span class="nav-dot"></span>资产</button>
+                  <button class="active" type="button"><span class="nav-dot"></span>规划</button>
+                  <button type="button"><span class="nav-dot"></span>目标</button>
+                </nav>
+              </section>
+            </section>
+          </div>
+
+          <button class="replay" id="replayBtn" type="button" aria-label="重新播放">↻</button>
+        </div>
+      </div>
+
+      <aside class="side">
+        <section class="section">
+          <h3>怎么体验</h3>
+          <p>刷新后首页照常播放。点击“生成我的家庭财务规划”，它会成为用户发给 AI 的第一条消息。问诊完成后，页面进入正式规划页，而不是停留在聊天报告里。</p>
+          <div class="tokens">
+            <span>真正聊天流</span>
+            <span>一次只问一题</span>
+            <span>规划页落点</span>
+            <span>AI 常驻入口</span>
+          </div>
+        </section>
+
+        <section class="section">
+          <h3>问诊顺序</h3>
+          <div class="timeline">
+            <div class="step"><b>1</b><div><strong>家庭底盘</strong><span>总资产、总负债，问完才归纳净资产。</span></div></div>
+            <div class="step"><b>2</b><div><strong>现金流</strong><span>年度收入、年度结余，不确定时再拆开算。</span></div></div>
+            <div class="step"><b>3</b><div><strong>必须目标</strong><span>支持多选，再逐个补全核心信息。</span></div></div>
+            <div class="step"><b>4</b><div><strong>想要目标</strong><span>问完必要目标后再问，可跳过。</span></div></div>
+            <div class="step"><b>5</b><div><strong>进入规划页</strong><span>展示三层结果、资产/目标入口、底部导航和 AI 呼叫入口。</span></div></div>
+          </div>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const screen = document.getElementById('demoScreen');
+    const replayBtn = document.getElementById('replayBtn');
+    const questions = [...document.querySelectorAll('.question')];
+    const chatFeed = document.getElementById('chatFeed');
+    const inputDock = document.getElementById('inputDock');
+    let timers = [];
+    let stepIndex = 0;
+    let selectedMustGoals = [];
+    let selectedWantGoals = [];
+
+    const steps = [
+      {
+        id: 'assets',
+        label: '家庭底盘 1/2',
+        question: '你家现在总资产大概有多少？不需要精确，按万元填就行。',
+        options: ['80 万', '120 万', '200 万', '我自己输入'],
+        summary: '我先记为：当前总资产 120 万。',
+      },
+      {
+        id: 'debt',
+        label: '家庭底盘 2/2',
+        question: '这些资产里，负债大概还有多少？比如房贷、车贷、信用贷。',
+        options: ['0 万', '35 万', '80 万', '我自己输入'],
+        summary: '收到，当前净资产约 85 万。这个数字会作为家庭底盘进入测算。',
+      },
+      {
+        id: 'income',
+        label: '现金流 1/2',
+        question: '你家一年税后大概能赚多少钱？包括工资、经营收入和稳定副业。',
+        options: ['30 万', '50 万', '80 万', '不稳定'],
+        summary: '我会把年度家庭收入先记为 50 万，并标注为当前收入支撑。',
+      },
+      {
+        id: 'surplus',
+        label: '现金流 2/2',
+        question: '一年下来，大概能剩下多少钱用于长期规划？如果不确定，我可以帮你拆开算。',
+        options: ['10 万', '18 万', '30 万', '帮我拆开算'],
+        summary: '先按年度可规划结余 18 万计算。后续可以再拆成稳定结余和不确定结余。',
+      },
+      {
+        id: 'mustGoals',
+        label: '必须目标',
+        question: '先看底线目标。未来哪些事情是家庭必须保障、不能轻易放弃的？可以一次选多个。',
+        options: ['基本退休生活', '孩子教育', '父母养老', '医疗风险', '换房压力'],
+        multi: 'must',
+        summary: '我会先补全这些必须目标，再看它们能不能被当前资源覆盖。',
+      },
+      {
+        id: 'mustDetail',
+        label: '必须目标补全',
+        question: '以“基本退休生活”为例，这个目标大概几年后开始？先给一个大概时间。',
+        options: ['10 年后', '20 年后', '30 年后', '我自己输入'],
+        summary: '已记录：基本退休生活，预计 20 年后开始，属于必须目标。后续会逐个补全其他必须目标。',
+      },
+      {
+        id: 'wantGoals',
+        label: '想要目标',
+        question: '底线目标记录好了。接下来看看想要但可以取舍的目标，可以多选，也可以跳过。',
+        options: ['提前退休', '长期旅行', '换更大的房子', '买车', '暂时没有'],
+        multi: 'want',
+        summary: '想要目标会单独进入取舍层，不会和必须目标混在一起判断。',
+      },
+      {
+        id: 'assumption',
+        label: '默认假设',
+        question: '我先按保守默认值计算：预期收益率 4%，通胀率和折现率 3%。先按这个算可以吗？',
+        options: ['按默认先算', '我要修改假设'],
+        summary: '好的，我会先按收益率 4%、通胀率和折现率 3% 生成第一版家庭财务地图。',
+        final: true,
+      },
+    ];
+
+    function clearSequence() {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers = [];
+    }
+
+    function runSequence() {
+      clearSequence();
+      stepIndex = 0;
+      selectedMustGoals = [];
+      selectedWantGoals = [];
+      chatFeed.innerHTML = '';
+      inputDock.innerHTML = '';
+      screen.classList.remove('play', 'chat-mode', 'handoff-mode', 'result-mode', 'dialog-gone', 'loading-gone', 'question-ready');
+      window.setTimeout(() => screen.classList.add('play'), 30);
+      timers.push(window.setTimeout(() => screen.classList.add('dialog-gone'), 3080));
+      timers.push(window.setTimeout(() => screen.classList.add('loading-gone'), 3920));
+      timers.push(window.setTimeout(() => screen.classList.add('question-ready'), 3960));
+    }
+
+    function addBubble(type, text, extraClass = '') {
+      const bubble = document.createElement('div');
+      bubble.className = ['bubble', type, extraClass].filter(Boolean).join(' ');
+      bubble.textContent = text;
+      chatFeed.appendChild(bubble);
+      screen.scrollTo({ top: screen.scrollHeight, behavior: 'smooth' });
+    }
+
+    function showTyping(next) {
+      const typing = document.createElement('div');
+      typing.className = 'typing';
+      typing.innerHTML = '<i></i><i></i><i></i>';
+      chatFeed.appendChild(typing);
+      screen.scrollTo({ top: screen.scrollHeight, behavior: 'smooth' });
+      window.setTimeout(() => {
+        typing.remove();
+        next();
+      }, 520);
+    }
+
+    function renderStep() {
+      const step = steps[stepIndex];
+      if (!step) return;
+
+      showTyping(() => {
+        addBubble('ai', step.question);
+        inputDock.innerHTML = '';
+
+        const label = document.createElement('div');
+        label.className = 'prompt-label';
+        label.innerHTML = `<strong>${step.label}</strong><span>${stepIndex + 1}/${steps.length}</span>`;
+        inputDock.appendChild(label);
+
+        const grid = document.createElement('div');
+        grid.className = step.options.length <= 4 ? 'answer-grid two' : 'answer-grid';
+        inputDock.appendChild(grid);
+
+        step.options.forEach((option) => {
+          const button = document.createElement('button');
+          button.className = 'answer-option';
+          button.type = 'button';
+          button.textContent = option;
+
+          if (step.multi) {
+            button.addEventListener('click', () => {
+              button.classList.toggle('selected');
+              const selected = [...grid.querySelectorAll('.selected')].map((item) => item.textContent);
+              if (step.multi === 'must') selectedMustGoals = selected;
+              if (step.multi === 'want') selectedWantGoals = selected;
+            });
+          } else {
+            button.addEventListener('click', () => chooseAnswer(option));
+          }
+          grid.appendChild(button);
+        });
+
+        if (step.multi) {
+          const row = document.createElement('div');
+          row.className = 'confirm-row';
+          const ghost = document.createElement('div');
+          ghost.className = 'ghost-input';
+          ghost.textContent = '也可以直接输入一个没有列出的目标';
+          const confirm = document.createElement('button');
+          confirm.className = 'confirm-button';
+          confirm.type = 'button';
+          confirm.textContent = '继续';
+          confirm.addEventListener('click', () => {
+            const picked = step.multi === 'must' ? selectedMustGoals : selectedWantGoals;
+            chooseAnswer(picked.length ? picked.join('、') : '暂时没有');
+          });
+          row.append(ghost, confirm);
+          inputDock.appendChild(row);
+        }
+      });
+    }
+
+    function chooseAnswer(answer) {
+      const step = steps[stepIndex];
+      inputDock.innerHTML = '';
+      addBubble('user', answer);
+      showTyping(() => {
+        addBubble('ai', step.summary, 'summary');
+        if (step.final) {
+          renderResultLoading();
+          return;
+        }
+        stepIndex += 1;
+        renderStep();
+      });
+    }
+
+    function renderResultLoading() {
+      inputDock.innerHTML = '';
+      const loadingLines = [
+        '正在生成你的家庭财务地图',
+        '正在折现未来目标',
+        '正在检查 7 个关键指标',
+        '正在判断哪些目标最挤压计划',
+      ];
+
+      let index = 0;
+      const pushLine = () => {
+        if (index >= loadingLines.length) {
+          window.setTimeout(() => {
+            screen.classList.add('handoff-mode');
+            screen.scrollTo({ top: 0, behavior: 'smooth' });
+            window.setTimeout(() => {
+              chatFeed.innerHTML = '';
+              inputDock.innerHTML = '';
+              screen.classList.remove('chat-mode', 'handoff-mode');
+              screen.classList.add('result-mode');
+              screen.scrollTo({ top: 0, behavior: 'auto' });
+            }, 1250);
+          }, 560);
+          return;
+        }
+        addBubble('ai', loadingLines[index], 'summary');
+        index += 1;
+        window.setTimeout(pushLine, 460);
+      };
+      pushLine();
+    }
+
+    function startPlanningFlow() {
+      clearSequence();
+      screen.classList.remove('play', 'question-ready');
+      screen.classList.add('chat-mode');
+      chatFeed.innerHTML = '';
+      inputDock.innerHTML = '';
+      stepIndex = 0;
+      selectedMustGoals = [];
+      selectedWantGoals = [];
+      addBubble('user', '我想生成一份家庭财务规划。');
+      showTyping(() => {
+        addBubble('ai', '我先帮你搭一张家庭财务地图。你不用一次填完，我会一个问题一个问题问，只收集会影响人生计划的数字。');
+        renderStep();
+      });
+    }
+
+    questions.forEach((question) => {
+      question.addEventListener('click', () => {
+        if (question.dataset.flow === 'plan') {
+          startPlanningFlow();
+          return;
+        }
+        startPlanningFlow();
+      });
+    });
+
+    replayBtn.addEventListener('click', runSequence);
+
+    runSequence();
+  </script>
+</body>
+</html>
