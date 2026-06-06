@@ -9,7 +9,7 @@
 - 规划页：展示核心结论、风险解释、行动建议和 AI 补充入口。
 - 目标页：维护一次性目标和持续性目标，区分必须目标与想要目标。
 - 设备保存：使用当前手机浏览器本地存储保留用户规划数据。
-- 自带模型 Key：体验用户可在自己手机上填写通义千问 / DeepSeek / Kimi API Key，用于“继续问 AI”。
+- 托管 AI：测试版本默认通过 CloudBase 云函数调用 DeepSeek，体验用户不需要填写 API Key。
 - PWA 支持：包含 Web App Manifest、Service Worker 和应用图标。
 
 ## 技术栈
@@ -49,31 +49,20 @@ npm install
 npm run build
 ```
 
-部署 `dist/` 目录到任意 HTTPS 静态托管服务。可选方案包括 GitHub Pages、Cloudflare Pages、Netlify、Vercel、对象存储静态网站等。这个静态站点只负责分发前端文件，不保存用户计划、不保存 API Key。
+部署 `dist/` 目录到任意 HTTPS 静态托管服务。当前腾讯云测试版本还需要同时部署 `cloudfunctions/ai-chat` 云函数，用于服务端代理 DeepSeek。
 
 体验用户操作：
 
 1. 用手机浏览器打开开发者提供的 HTTPS 地址。
 2. 在浏览器菜单中选择“添加到主屏幕”，之后可像普通 App 一样从桌面打开。
 3. 完成首次问诊。规划数据会保存在当前手机浏览器的 `localStorage`，不要求注册或登录。
-4. 点击顶部状态条的“模型”或底部“模型”Tab，选择模型服务商。优先推荐“通义千问”，默认接口为阿里云百炼 OpenAI 兼容接口。
-5. 在“API Key”输入框粘贴自己的模型 Key。Key 只保存在当前手机浏览器 `localStorage`，不会上传到「能躺了吗」服务器。
-6. 可点击“测试模型调用”确认 Key、模型名和接口地址可用。
-7. 回到“规划”页，在底部输入框继续提问，或点击“继续问 AI / AI 监测”。浏览器会用你配置的 Key 直接调用所选模型服务商。
+4. 点击顶部状态条的“AI”或底部“AI”Tab，可以测试托管 AI 服务是否可用。
+5. 回到“规划”页，在底部输入框继续提问，或点击“继续问 AI / AI 监测”。浏览器会请求 CloudBase 云函数，由云函数调用 DeepSeek。
 
-默认模型配置：
-
-| 服务商 | 默认模型 | 默认接口 |
-| --- | --- | --- |
-| 通义千问 | `qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
-| DeepSeek | `deepseek-chat` | `https://api.deepseek.com/chat/completions` |
-| Kimi | `kimi-k2.6` | `https://api.moonshot.ai/v1/chat/completions` |
-
-如果服务商调整模型名或接口地址，可以在模型设置页直接修改。
-
-注意：手机浏览器直连模型服务商需要服务商接口允许浏览器跨域调用。如果“测试模型调用”出现 CORS 或网络拦截，说明该服务商不支持这种纯前端直连方式；此时要么让体验用户使用自己的代理地址，要么后续改成服务端代理方案。服务端代理会让 Key 经过服务器，和“Key 不上传”的约束不同，需要单独评审。
+DeepSeek API Key 不写入前端代码。请在 CloudBase 云函数环境变量中配置 `DEEPSEEK_API_KEY`，并将云函数 HTTP 路径映射到 `/api/ai-chat`。
 
 更完整的手机 Alpha 流程见 [docs/mobile-alpha-pwa.md](docs/mobile-alpha-pwa.md)。
+DeepSeek 代理部署见 [docs/cloudbase-deepseek-proxy.md](docs/cloudbase-deepseek-proxy.md)。
 
 ## 测试与构建
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   callConfiguredModel,
+  callManagedModel,
   getProviderConfig,
   hasModelKey,
   maskApiKey,
@@ -86,6 +87,36 @@ test('callConfiguredModel sends OpenAI-compatible chat completion payload', asyn
     assert.equal(body.messages[0].role, 'system');
     assert.match(body.messages[1].content, /我该先看什么/);
     assert.equal(result.content, '我能读取规划摘要。先复核可调用资产。');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('callManagedModel sends compact messages to the CloudBase proxy', async () => {
+  const originalFetch = globalThis.fetch;
+  let captured = null;
+
+  globalThis.fetch = async (url, options) => {
+    captured = { url, options };
+    return new Response(JSON.stringify({ content: '托管 AI 服务已连接。', provider: 'DeepSeek', model: 'deepseek-chat' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  try {
+    const result = await callManagedModel({
+      question: '我该先看什么？',
+      plan,
+      metrics,
+    });
+
+    const body = JSON.parse(captured.options.body);
+    assert.equal(captured.url, '/api/ai-chat');
+    assert.equal(captured.options.headers['content-type'], 'application/json');
+    assert.equal(body.messages[0].role, 'system');
+    assert.match(body.messages[1].content, /我该先看什么/);
+    assert.equal(result.content, '托管 AI 服务已连接。');
   } finally {
     globalThis.fetch = originalFetch;
   }

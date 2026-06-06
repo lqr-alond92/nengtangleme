@@ -1,6 +1,6 @@
 # 腾讯云手机 Alpha 部署说明
 
-目标：把「能躺了吗」作为静态 PWA 发给中国内地体验用户。用户用手机打开 HTTPS 链接，添加到主屏幕，不登录、不注册，规划数据和模型 API Key 保存在当前手机浏览器。
+目标：把「能躺了吗」作为静态 PWA 发给中国内地体验用户。用户用手机打开 HTTPS 链接，添加到主屏幕，不登录、不注册。规划数据保存在当前手机浏览器；AI 问答默认通过 CloudBase 云函数调用 DeepSeek。
 
 ## 推荐入口
 
@@ -49,13 +49,13 @@ zip -r ../neng-tang-mobile-alpha-cloudbase.zip .
 - “测试模型调用”成功，或明确看到模型服务商的 CORS/网络错误。
 - “继续问 AI”能调用配置的大模型。
 
-## 用户数据边界
+## AI 服务边界
 
-腾讯云这里只托管前端静态文件。当前实现不会把规划数据和 API Key 保存到腾讯云：
+当前版本需要额外部署 `cloudfunctions/ai-chat` 云函数：
 
-- 规划数据保存在用户手机浏览器 `localStorage`。
-- 模型 API Key 保存在用户手机浏览器 `localStorage`。
-- 点击“测试模型调用”或“继续问 AI”时，由用户手机浏览器直接请求所选模型服务商。
+- DeepSeek API Key 只放在 CloudBase 云函数环境变量 `DEEPSEEK_API_KEY`。
+- 前端静态包不包含 API Key。
+- 点击“测试 AI 服务”或“继续问 AI”时，当前规划摘要会发送到 CloudBase 云函数，再由云函数调用 DeepSeek。
+- 规划数据仍保存在用户手机浏览器 `localStorage`，本阶段不做账号同步和云端恢复。
 
-如果模型服务商不允许浏览器跨域请求，就会出现 CORS 或网络错误。那不是腾讯云部署问题，而是纯前端直连模型接口的限制。
-
+部署细节见 [cloudbase-deepseek-proxy.md](./cloudbase-deepseek-proxy.md)。

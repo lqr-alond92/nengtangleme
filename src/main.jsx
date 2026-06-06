@@ -36,7 +36,9 @@ import {
 } from './finance.mjs';
 import {
   MODEL_PROVIDERS,
+  MANAGED_MODEL_LABEL,
   MODEL_SETTINGS_STORAGE_KEY,
+  callManagedModel,
   callConfiguredModel,
   defaultModelSettings,
   getProviderConfig,
@@ -480,17 +482,14 @@ function App() {
 }
 
 function LocalAlphaBar({ modelSettings, onOpenSettings, syncStatus }) {
-  const config = getProviderConfig(modelSettings);
-  const isReady = hasModelKey(modelSettings);
-
   return (
     <section className="account-bar local-alpha-bar">
       <div>
         <strong>手机 Alpha，当前设备保存</strong>
-        <span>{syncStatus} · {config.name} {isReady ? `已配置 ${maskApiKey(config.apiKey)}` : '未配置 Key'}</span>
+        <span>{syncStatus} · {MANAGED_MODEL_LABEL} 已连接</span>
       </div>
       <button type="button" onClick={onOpenSettings}>
-        模型
+        AI
       </button>
     </section>
   );
@@ -1122,8 +1121,7 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
   const timerRef = useRef(null);
   const initialQuestionRef = useRef(false);
   const metrics = useMemo(() => buildMetrics(plan), [plan]);
-  const modelConfig = getProviderConfig(modelSettings);
-  const isModelReady = hasModelKey(modelSettings);
+  const modelConfig = { name: 'DeepSeek', model: 'deepseek-chat' };
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
@@ -1149,14 +1147,9 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
     pushMessage('user', trimmed);
     setQuestionInput('');
 
-    if (!isModelReady) {
-      pushMessage('ai', `还没配置模型 Key。先到模型设置里填写 ${modelConfig.name} 的 API Key，我就能基于这份当前设备上的规划继续回答。`);
-      return;
-    }
-
     setIsAskingModel(true);
     try {
-      const result = await callConfiguredModel(modelSettings, {
+      const result = await callManagedModel({
         question: trimmed,
         plan,
         metrics,
@@ -1247,22 +1240,11 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
         <div className="supplement-choice-panel">
           <div className="input-card-copy">
             <strong>这次想问什么？</strong>
-            <span>
-              {isModelReady
-                ? `当前使用 ${modelConfig.name} / ${modelConfig.model}。也可以直接更新结构化数据。`
-                : `先配置 ${modelConfig.name} API Key，或继续用本地规则更新资产和目标。`}
-            </span>
+            <span>当前使用 {modelConfig.name} / {modelConfig.model}，由测试方服务端统一配置。也可以直接更新结构化数据。</span>
           </div>
-          {!isModelReady && (
-            <button className="model-config-callout" type="button" onClick={onOpenSettings}>
-              <KeyRound size={17} />
-              <span>去配置模型 Key</span>
-              <ChevronRight size={16} />
-            </button>
-          )}
           <form className="ai-question-form" onSubmit={submitQuestion}>
             <input
-              placeholder={isModelReady ? '直接问：我现在最该先改什么？' : '配置 Key 后可直接追问 AI'}
+              placeholder="直接问：我现在最该先改什么？"
               value={questionInput}
               onChange={(event) => setQuestionInput(event.target.value)}
             />
@@ -1583,8 +1565,7 @@ function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restart
   const [questionDraft, setQuestionDraft] = useState('');
   const aiReport = buildAiReport(plan, metrics);
   const judgement = aiReport.judgement;
-  const modelConfig = getProviderConfig(modelSettings);
-  const isModelReady = hasModelKey(modelSettings);
+  const modelConfig = { name: 'DeepSeek', model: 'deepseek-chat' };
   const progress = clamp(metrics.callableCoverage, 0, 1);
   const progressValue = Math.round(progress * 100);
   const monthlyExpense = plan.annualExpense / 12;
@@ -1618,12 +1599,12 @@ function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restart
             <div className="result-avatar">姐</div>
             <div>
               <strong>知心姐姐</strong>
-              <span>{isModelReady ? `${modelConfig.name} · ${modelConfig.model}` : '家庭财务 AI · 待配置模型'}</span>
+              <span>{modelConfig.name} · {modelConfig.model}</span>
             </div>
           </div>
           <button className="result-pill" type="button" onClick={openModelSettings}>
             <Check size={13} />
-            {isModelReady ? '模型已配置' : '配置模型'}
+            AI 已连接
           </button>
         </header>
 
@@ -1783,7 +1764,7 @@ function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restart
           </div>
           <form className="result-input-shell" onSubmit={submitQuestion}>
             <input
-              placeholder={isModelReady ? '继续问知心姐姐...' : '先配置模型 Key，再继续问 AI'}
+              placeholder="继续问知心姐姐..."
               value={questionDraft}
               onChange={(event) => setQuestionDraft(event.target.value)}
             />
@@ -1818,36 +1799,15 @@ function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restart
   );
 }
 
-function ModelSettingsPage({ metrics, plan, settings, updateSettings }) {
+function ModelSettingsPage({ metrics, plan }) {
   const [testStatus, setTestStatus] = useState('');
   const [isTesting, setIsTesting] = useState(false);
-  const config = getProviderConfig(settings);
-  const providers = Object.values(MODEL_PROVIDERS);
-
-  function updateProvider(provider) {
-    updateSettings((current) => normalizeModelSettings({ ...current, provider }));
-    setTestStatus('');
-  }
-
-  function updateProviderValue(group, value) {
-    updateSettings((current) => {
-      const normalized = normalizeModelSettings(current);
-      return normalizeModelSettings({
-        ...normalized,
-        [group]: {
-          ...normalized[group],
-          [normalized.provider]: value,
-        },
-      });
-    });
-    setTestStatus('');
-  }
 
   async function testModel() {
     setIsTesting(true);
-    setTestStatus('正在调用模型...');
+    setTestStatus('正在调用托管 AI 服务...');
     try {
-      const result = await callConfiguredModel(settings, {
+      const result = await callManagedModel({
         question: '请用两句话确认你能读取我当前设备上的规划摘要，并指出当前最该复核的一项。',
         plan,
         metrics,
@@ -1861,61 +1821,32 @@ function ModelSettingsPage({ metrics, plan, settings, updateSettings }) {
   }
 
   return (
-    <Screen eyebrow="模型" title="手机模型设置" subtitle="体验用户自己填写 Key；Key 只保存在当前手机浏览器" action={<Settings size={20} />}>
+    <Screen eyebrow="AI" title="托管 AI 服务" subtitle="测试版本默认使用 DeepSeek；体验用户不需要填写 API Key" action={<Settings size={20} />}>
       <section className="panel model-privacy-panel">
         <div>
           <ShieldCheck size={20} />
-          <strong>不会上传到「能躺了吗」服务器</strong>
+          <strong>DeepSeek 已由测试方服务端统一配置</strong>
         </div>
-        <p>手机 Alpha 不做账号登录和云端保存。API Key 会写入当前手机浏览器 localStorage，只在你点击“继续问 AI”或“测试调用”时由这个浏览器直接发给所选模型服务商。</p>
+        <p>体验用户不用填写 API Key。继续问 AI 时，当前规划摘要会发送到 CloudBase 云函数，再由云函数调用 DeepSeek。规划数据仍保存在当前设备，云端只承担本次 AI 问答转发。</p>
       </section>
 
-      <Panel title="服务商" icon={<KeyRound size={18} />}>
-        <div className="provider-grid">
-          {providers.map((provider) => (
-            <button
-              className={settings.provider === provider.key ? 'active' : ''}
-              key={provider.key}
-              type="button"
-              onClick={() => updateProvider(provider.key)}
-            >
-              <strong>{provider.name}</strong>
-              <span>{provider.defaultModel}</span>
-            </button>
-          ))}
-        </div>
+      <Panel title="当前模型" icon={<KeyRound size={18} />}>
+        <ReadOnlyRow label="服务商" value="DeepSeek" />
+        <ReadOnlyRow label="模型" value="deepseek-chat" />
+        <ReadOnlyRow label="调用方式" value="CloudBase 云函数代理" />
       </Panel>
 
-      <Panel title={`${config.name} 配置`} icon={<Settings size={18} />}>
-        <label className="input-row model-field">
-          <span>API Key</span>
-          <div>
-            <input
-              autoComplete="off"
-              placeholder={config.keyHint}
-              type="password"
-              value={config.apiKey}
-              onChange={(event) => updateProviderValue('apiKeys', event.target.value)}
-            />
-          </div>
-        </label>
-        <TextField label="模型名称" value={config.model} placeholder={config.defaultModel} onChange={(value) => updateProviderValue('models', value)} />
-        <TextField
-          label="接口地址"
-          value={config.endpoint}
-          placeholder={config.defaultEndpoint}
-          onChange={(value) => updateProviderValue('endpoints', value)}
-        />
-        <button className="primary-button" disabled={isTesting || !config.apiKey.trim()} type="button" onClick={testModel}>
+      <Panel title="连通性测试" icon={<Sparkles size={18} />}>
+        <button className="primary-button" disabled={isTesting} type="button" onClick={testModel}>
           <Sparkles size={18} />
-          测试模型调用
+          测试 AI 服务
         </button>
         {testStatus && <p className={testStatus.includes('可用') ? 'model-test-status good' : 'model-test-status'}>{testStatus}</p>}
       </Panel>
 
       <section className="panel model-help-panel">
-        <strong>体验用户怎么填</strong>
-        <p>优先选择通义千问，在阿里云百炼控制台创建 API Key 后粘贴到这里；如果体验用户已有 DeepSeek 或 Kimi Key，也可以切换服务商后填写。模型名和接口地址保持默认即可，除非服务商文档要求调整。</p>
+        <strong>部署要求</strong>
+        <p>CloudBase 云函数需要配置环境变量 DEEPSEEK_API_KEY，并把 HTTP 访问路径映射到 /api/ai-chat。不要把 API Key 写进前端代码或静态托管文件。</p>
       </section>
     </Screen>
   );

@@ -1,6 +1,8 @@
 import { money, percent, toNumber } from './finance.mjs';
 
 export const MODEL_SETTINGS_STORAGE_KEY = 'neng_tang_model_settings_v1';
+export const MANAGED_AI_ENDPOINT = '/api/ai-chat';
+export const MANAGED_MODEL_LABEL = 'DeepSeek / deepseek-chat';
 
 export const MODEL_PROVIDERS = {
   qwen: {
@@ -176,5 +178,42 @@ export async function callConfiguredModel(settings, { question, plan, metrics, r
     usage: data?.usage || null,
     provider: config.name,
     model: config.model,
+  };
+}
+
+export async function callManagedModel({ question, plan, metrics, recentMessages = [] }) {
+  const response = await fetch(MANAGED_AI_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      messages: buildModelMessages({ question, plan, metrics, recentMessages }),
+    }),
+  });
+
+  const rawText = await response.text();
+  let data = null;
+  try {
+    data = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    const message = data?.message || rawText || `${response.status} ${response.statusText}`;
+    throw new Error(`AI 服务调用失败：${message}`);
+  }
+
+  const content = data?.content || '';
+  if (!content.trim()) {
+    throw new Error('AI 服务没有返回可读内容，请稍后重试。');
+  }
+
+  return {
+    content: content.trim(),
+    usage: data?.usage || null,
+    provider: 'DeepSeek',
+    model: 'deepseek-chat',
   };
 }
