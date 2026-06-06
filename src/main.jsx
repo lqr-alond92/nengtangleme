@@ -4,11 +4,11 @@ import {
   ArrowRight,
   Bot,
   BriefcaseBusiness,
-  Calculator,
   Check,
   ChevronRight,
   Coins,
   Home,
+  KeyRound,
   Landmark,
   Pencil,
   PiggyBank,
@@ -16,6 +16,8 @@ import {
   Radar,
   RefreshCcw,
   Send,
+  Settings,
+  ShieldCheck,
   Sparkles,
   Target,
   Trash2,
@@ -32,11 +34,22 @@ import {
   percent,
   toNumber,
 } from './finance.mjs';
+import {
+  MODEL_PROVIDERS,
+  MODEL_SETTINGS_STORAGE_KEY,
+  callConfiguredModel,
+  defaultModelSettings,
+  getProviderConfig,
+  hasModelKey,
+  maskApiKey,
+  normalizeModelSettings,
+} from './modelClient.mjs';
 import { applyPlanSupplement } from './supplement.mjs';
 import './styles.css';
 
 const PLAN_STORAGE_KEY = 'neng_tang_plan_v1';
 const ONBOARDING_STORAGE_KEY = 'neng_tang_onboarding_complete_v1';
+const API_BASE = '';
 
 const defaultPlan = {
   liquidAssets: 220000,
@@ -127,6 +140,31 @@ function loadPlan() {
 
 function loadOnboardingState() {
   return localStorage.getItem(ONBOARDING_STORAGE_KEY) === 'true';
+}
+
+function loadModelSettings() {
+  try {
+    const stored = localStorage.getItem(MODEL_SETTINGS_STORAGE_KEY);
+    return normalizeModelSettings(stored ? JSON.parse(stored) : defaultModelSettings);
+  } catch {
+    return normalizeModelSettings(defaultModelSettings);
+  }
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+  const data = response.status === 204 ? null : await response.json();
+  if (!response.ok) {
+    throw new Error(data?.message || '请求失败');
+  }
+  return data;
 }
 
 function normalizePlan(plan) {
@@ -242,13 +280,37 @@ function App() {
   const [activeTab, setActiveTab] = useState('planning');
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(loadOnboardingState);
   const [isSupplementing, setIsSupplementing] = useState(false);
+  const [supplementInitialQuestion, setSupplementInitialQuestion] = useState('');
+  const [modelSettings, setModelSettings] = useState(loadModelSettings);
   const [draftKind, setDraftKind] = useState('oneTime');
   const [draftGoal, setDraftGoal] = useState(() => freshGoal('oneTime'));
   const [isGoalFormOpen, setIsGoalFormOpen] = useState(false);
+  const [authUser, setAuthUser] = useState(null);
+  const [authStatus, setAuthStatus] = useState('checking');
+  const [planRecord, setPlanRecord] = useState(null);
+  const [syncStatus, setSyncStatus] = useState('未登录草稿');
+  const hasLoadedCloudRef = useRef(false);
+  const saveTimerRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(plan));
   }, [plan]);
+
+  useEffect(() => {
+    setAuthUser(null);
+    setAuthStatus('guest');
+    setPlanRecord(null);
+    setSyncStatus('手机 Alpha：仅保存在当前设备');
+    hasLoadedCloudRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    return () => window.clearTimeout(saveTimerRef.current);
+  }, [authUser, hasCompletedOnboarding, plan, planRecord?.id]);
+
+  useEffect(() => {
+    localStorage.setItem(MODEL_SETTINGS_STORAGE_KEY, JSON.stringify(modelSettings));
+  }, [modelSettings]);
 
   const metrics = useMemo(() => buildMetrics(plan), [plan]);
 
@@ -261,9 +323,54 @@ function App() {
     localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
   }
 
-  function startSupplement() {
+  async function sendAuthCode(identifier) {
+    const data = await apiRequest('/api/auth/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ identifier }),
+    });
+    return data;
+  }
+
+  async function login(identifier, code) {
+    const { user } = await apiRequest('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, code }),
+    });
+    setAuthUser(user);
+    setAuthStatus('signed-in');
+    setSyncStatus('已登录，正在同步...');
+    const { plan: cloudPlan } = await apiRequest('/api/plans/current');
+    if (cloudPlan?.plan) {
+      const normalized = normalizePlan(cloudPlan.plan);
+      setPlan(normalized);
+      setPlanRecord(cloudPlan);
+      localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(normalized));
+      localStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
+      setHasCompletedOnboarding(true);
+      setSyncStatus('已从云端加载');
+    } else {
+      setSyncStatus('已登录，本地草稿将保存到云端');
+    }
+  }
+
+  async function logout() {
+    await apiRequest('/api/auth/logout', { method: 'POST', body: '{}' });
+    setAuthUser(null);
+    setPlanRecord(null);
+    setAuthStatus('guest');
+    setSyncStatus('未登录草稿');
+  }
+
+  function startSupplement(initialQuestion = '') {
+    setSupplementInitialQuestion(initialQuestion);
     setActiveTab('planning');
     setIsSupplementing(true);
+  }
+
+  function openModelSettings() {
+    setIsSupplementing(false);
+    setSupplementInitialQuestion('');
+    setActiveTab('model');
   }
 
   function completeSupplement(nextPlan) {
@@ -318,16 +425,28 @@ function App() {
   }
 
   if (isSupplementing) {
-    return <SupplementExperience onCancel={() => setIsSupplementing(false)} onComplete={completeSupplement} plan={plan} />;
+    return (
+      <SupplementExperience
+        initialQuestion={supplementInitialQuestion}
+        modelSettings={modelSettings}
+        onCancel={() => setIsSupplementing(false)}
+        onComplete={completeSupplement}
+        onOpenSettings={openModelSettings}
+        plan={plan}
+      />
+    );
   }
 
   return (
     <div className="app-shell">
       <main className="app-frame">
+        <LocalAlphaBar modelSettings={modelSettings} onOpenSettings={openModelSettings} syncStatus={syncStatus} />
         {activeTab === 'asset' && <AssetPage metrics={metrics} plan={plan} updatePlan={updatePlan} />}
         {activeTab === 'planning' && (
           <PlanningPage
             metrics={metrics}
+            modelSettings={modelSettings}
+            openModelSettings={openModelSettings}
             plan={plan}
             restartOnboarding={restartOnboarding}
             setActiveTab={setActiveTab}
@@ -350,10 +469,116 @@ function App() {
             updatePlan={updatePlan}
           />
         )}
+        {activeTab === 'model' && (
+          <ModelSettingsPage metrics={metrics} plan={plan} settings={modelSettings} updateSettings={setModelSettings} />
+        )}
         {activeTab === 'planning' && <AiDock onClick={startSupplement} />}
         <BottomTabs activeTab={activeTab} setActiveTab={setActiveTab} />
       </main>
     </div>
+  );
+}
+
+function LocalAlphaBar({ modelSettings, onOpenSettings, syncStatus }) {
+  const config = getProviderConfig(modelSettings);
+  const isReady = hasModelKey(modelSettings);
+
+  return (
+    <section className="account-bar local-alpha-bar">
+      <div>
+        <strong>手机 Alpha，当前设备保存</strong>
+        <span>{syncStatus} · {config.name} {isReady ? `已配置 ${maskApiKey(config.apiKey)}` : '未配置 Key'}</span>
+      </div>
+      <button type="button" onClick={onOpenSettings}>
+        模型
+      </button>
+    </section>
+  );
+}
+
+function AccountBar({ authStatus, onLogin, onLogout, onSendCode, syncStatus, user }) {
+  const [identifier, setIdentifier] = useState('');
+  const [code, setCode] = useState('');
+  const [message, setMessage] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function handleSendCode() {
+    if (!identifier.trim()) return;
+    setIsBusy(true);
+    try {
+      const data = await onSendCode(identifier.trim());
+      setMessage(`开发验证码：${data.devCode}`);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    if (!identifier.trim() || !code.trim()) return;
+    setIsBusy(true);
+    try {
+      await onLogin(identifier.trim(), code.trim());
+      setMessage('');
+      setIsOpen(false);
+      setCode('');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  if (authStatus === 'checking') {
+    return (
+      <section className="account-bar">
+        <span>正在检查登录状态...</span>
+      </section>
+    );
+  }
+
+  if (user) {
+    return (
+      <section className="account-bar signed-in">
+        <div>
+          <strong>云端保存已开启</strong>
+          <span>{user.identifier} · {syncStatus}</span>
+        </div>
+        <button type="button" onClick={onLogout}>退出</button>
+      </section>
+    );
+  }
+
+  return (
+    <section className={isOpen ? 'account-bar open' : 'account-bar'}>
+      <div>
+        <strong>未登录，当前设备草稿</strong>
+        <span>{syncStatus}</span>
+      </div>
+      <button type="button" onClick={() => setIsOpen((current) => !current)}>
+        {isOpen ? '收起' : '登录'}
+      </button>
+      {isOpen && (
+        <form className="account-form" onSubmit={handleLogin}>
+          <label>
+            <span>邮箱或手机号</span>
+            <input value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="you@example.com" />
+          </label>
+          <label>
+            <span>验证码</span>
+            <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="开发环境 123456" />
+          </label>
+          <div className="account-actions">
+            <button disabled={isBusy || !identifier.trim()} type="button" onClick={handleSendCode}>获取验证码</button>
+            <button disabled={isBusy || !identifier.trim() || !code.trim()} type="submit">登录并同步</button>
+          </div>
+          {message && <p>{message}</p>}
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -864,9 +1089,11 @@ function OnboardingExperience({ onComplete }) {
   );
 }
 
-function SupplementExperience({ onCancel, onComplete, plan }) {
+function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, onComplete, onOpenSettings, plan }) {
   const [stage, setStage] = useState('chat');
   const [step, setStep] = useState('choose');
+  const [questionInput, setQuestionInput] = useState('');
+  const [isAskingModel, setIsAskingModel] = useState(false);
   const [messages, setMessages] = useState(() => [
     { id: crypto.randomUUID(), role: 'user', text: '我想让 AI 继续补充判断。' },
     {
@@ -893,6 +1120,10 @@ function SupplementExperience({ onCancel, onComplete, plan }) {
   });
   const feedRef = useRef(null);
   const timerRef = useRef(null);
+  const initialQuestionRef = useRef(false);
+  const metrics = useMemo(() => buildMetrics(plan), [plan]);
+  const modelConfig = getProviderConfig(modelSettings);
+  const isModelReady = hasModelKey(modelSettings);
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
@@ -900,8 +1131,48 @@ function SupplementExperience({ onCancel, onComplete, plan }) {
 
   useEffect(() => () => window.clearTimeout(timerRef.current), []);
 
+  useEffect(() => {
+    const question = String(initialQuestion || '').trim();
+    if (!question || initialQuestionRef.current) return;
+    initialQuestionRef.current = true;
+    submitQuestionText(question);
+  }, [initialQuestion]);
+
   function pushMessage(role, text) {
     setMessages((current) => [...current, { id: crypto.randomUUID(), role, text }]);
+  }
+
+  async function submitQuestionText(question) {
+    const trimmed = String(question || '').trim();
+    if (!trimmed || isAskingModel) return;
+
+    pushMessage('user', trimmed);
+    setQuestionInput('');
+
+    if (!isModelReady) {
+      pushMessage('ai', `还没配置模型 Key。先到模型设置里填写 ${modelConfig.name} 的 API Key，我就能基于这份当前设备上的规划继续回答。`);
+      return;
+    }
+
+    setIsAskingModel(true);
+    try {
+      const result = await callConfiguredModel(modelSettings, {
+        question: trimmed,
+        plan,
+        metrics,
+        recentMessages: messages,
+      });
+      pushMessage('ai', result.content);
+    } catch (error) {
+      pushMessage('ai', error.message);
+    } finally {
+      setIsAskingModel(false);
+    }
+  }
+
+  function submitQuestion(event) {
+    event.preventDefault();
+    submitQuestionText(questionInput);
   }
 
   function chooseMode(mode) {
@@ -975,9 +1246,31 @@ function SupplementExperience({ onCancel, onComplete, plan }) {
       return (
         <div className="supplement-choice-panel">
           <div className="input-card-copy">
-            <strong>这次想补充什么？</strong>
-            <span>AI 会只重算受影响的部分，然后刷新你的规划页。</span>
+            <strong>这次想问什么？</strong>
+            <span>
+              {isModelReady
+                ? `当前使用 ${modelConfig.name} / ${modelConfig.model}。也可以直接更新结构化数据。`
+                : `先配置 ${modelConfig.name} API Key，或继续用本地规则更新资产和目标。`}
+            </span>
           </div>
+          {!isModelReady && (
+            <button className="model-config-callout" type="button" onClick={onOpenSettings}>
+              <KeyRound size={17} />
+              <span>去配置模型 Key</span>
+              <ChevronRight size={16} />
+            </button>
+          )}
+          <form className="ai-question-form" onSubmit={submitQuestion}>
+            <input
+              placeholder={isModelReady ? '直接问：我现在最该先改什么？' : '配置 Key 后可直接追问 AI'}
+              value={questionInput}
+              onChange={(event) => setQuestionInput(event.target.value)}
+            />
+            <button disabled={isAskingModel || !questionInput.trim()} type="submit">
+              <Send size={16} />
+            </button>
+          </form>
+          {isAskingModel && <p className="model-thinking">正在调用 {modelConfig.name}...</p>}
           <div className="supplement-choice-grid">
             <button type="button" onClick={() => chooseMode('assets')}>
               <Radar size={17} />
@@ -1280,95 +1573,228 @@ function AssetPage({ metrics, plan, updatePlan }) {
   );
 }
 
-function PlanningPage({ metrics, plan, restartOnboarding, setActiveTab, startSupplement }) {
+function goalTiming(goal) {
+  if (!goal) return '目标时间待补充';
+  if (goal.kind === 'recurring') return `${goal.startYear} 年后开始`;
+  return `${goal.year} 年后发生`;
+}
+
+function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restartOnboarding, setActiveTab, startSupplement }) {
+  const [questionDraft, setQuestionDraft] = useState('');
   const aiReport = buildAiReport(plan, metrics);
-  const coverage = clamp(metrics.callableCoverage, 0, 1.35);
+  const judgement = aiReport.judgement;
+  const modelConfig = getProviderConfig(modelSettings);
+  const isModelReady = hasModelKey(modelSettings);
+  const progress = clamp(metrics.callableCoverage, 0, 1);
+  const progressValue = Math.round(progress * 100);
+  const monthlyExpense = plan.annualExpense / 12;
+  const cashCushion = monthlyExpense > 0 ? metrics.liquidAssets / monthlyExpense : 0;
+  const cashCushionText = `${Math.max(0, Math.round(cashCushion))}个月`;
+  const yearsText = metrics.yearsNeeded === null ? '80年+' : `${metrics.yearsNeeded}年`;
+  const pressureGoals = [...metrics.goals]
+    .sort((a, b) => b.presentValue - a.presentValue)
+    .slice(0, 3)
+    .map((goal) => ({
+      ...goal,
+      share: metrics.totalTargetPv > 0 ? goal.presentValue / metrics.totalTargetPv : 0,
+    }));
+
+  function submitQuestion(event) {
+    event.preventDefault();
+    const question = questionDraft.trim();
+    if (!question) {
+      startSupplement();
+      return;
+    }
+    setQuestionDraft('');
+    startSupplement(question);
+  }
 
   return (
-    <Screen eyebrow="规划" title="家庭财务地图" subtitle="把焦虑翻译成数字，再把数字翻译成行动" action={<Calculator size={20} />}>
-      <section className="ai-understands-card">
-        <div className="section-kicker">
-          <Sparkles size={18} />
-          <span>懂你的 AI</span>
-        </div>
-        <h2>{aiReport.headline}</h2>
-        <p>基于可动用资产、不易变现资产和目标现值生成判断。</p>
-        <div className="answer-strip">
-          <div>
-            <span>今天的答案</span>
-            <strong>{metrics.verdict.title}</strong>
+    <section className="screen result-screen">
+      <section className="result-chat-shell">
+        <header className="result-topbar">
+          <div className="result-person">
+            <div className="result-avatar">姐</div>
+            <div>
+              <strong>知心姐姐</strong>
+              <span>{isModelReady ? `${modelConfig.name} · ${modelConfig.model}` : '家庭财务 AI · 待配置模型'}</span>
+            </div>
           </div>
-          <div>
-            <span>可调用覆盖</span>
-            <strong>{percent(metrics.callableCoverage)}</strong>
-          </div>
-          <div>
-            <span>账面覆盖</span>
-            <strong>{percent(metrics.bookCoverage)}</strong>
-          </div>
+          <button className="result-pill" type="button" onClick={openModelSettings}>
+            <Check size={13} />
+            {isModelReady ? '模型已配置' : '配置模型'}
+          </button>
+        </header>
+
+        <div className="result-chat-feed">
+          <article className="result-bubble user">
+            <p>我把家里的资产、收入、支出和未来目标都填完了。你直接告诉我，我现在到底能不能躺？</p>
+          </article>
+
+          <article className="result-bubble ai compact">
+            <small>知心姐姐</small>
+            <p>我先接住你这个问题：你真正想知道的不是账上有多少钱，而是这个家庭有没有一条稳稳的退路。</p>
+          </article>
+
+          <article className="result-bubble ai">
+            <small>一句话承接</small>
+            <p>{judgement.leadIn}</p>
+          </article>
+
+          <article className="result-bubble ai">
+            <small>核心结论</small>
+            <p>{judgement.reason}</p>
+            <section className="result-card result-hero-card">
+              <div className="result-card-head">
+                <div>
+                  <strong>今天的判断</strong>
+                  <span>基于当前目标和保守假设</span>
+                </div>
+                <em>{judgement.pressure.title}</em>
+              </div>
+              <div className="result-verdict">
+                <b>{metrics.verdict.title}</b>
+                <span>{judgement.verdict}</span>
+              </div>
+            </section>
+          </article>
+
+          <article className="result-bubble ai">
+            <small>核心指标支撑</small>
+            <p>我先不讲一堆公式，只看会影响判断的几个指标。它们共同说明：方向可以讨论，但安全余量还需要被托住。</p>
+            <section className="result-card">
+              <div className="progress-head">
+                <span>能躺进度</span>
+                <b>{progressValue}%</b>
+              </div>
+              <div className="result-track">
+                <i style={{ width: `${progressValue}%` }} />
+              </div>
+              <div className="metric-grid">
+                <div className="metric"><span>可调用覆盖</span><strong>{percent(metrics.callableCoverage)}</strong></div>
+                <div className="metric"><span>当前缺口</span><strong>{metrics.gap > 0 ? money(metrics.gap) : '无缺口'}</strong></div>
+                <div className="metric"><span>现金垫</span><strong>{cashCushionText}</strong></div>
+              </div>
+              <div className="metric-grid">
+                <div className="metric"><span>预计还需</span><strong>{yearsText}</strong></div>
+                <div className="metric"><span>月结余目标</span><strong>{judgement.shortTermPlan[2]?.value.replace('至少 ', '')}</strong></div>
+                <div className="metric"><span>年度可规划</span><strong>{money(Math.max(0, metrics.annualSurplus))}</strong></div>
+              </div>
+              <details className="formula-drawer">
+                <summary>查看精算指标</summary>
+                <div className="formula-list">
+                  {aiReport.ratios.slice(0, 4).map((ratio) => (
+                    <div key={ratio.name}>
+                      <span>{ratio.name}</span>
+                      <strong>{ratio.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </section>
+          </article>
+
+          <article className="result-bubble ai">
+            <small>压力来源</small>
+            <p>{judgement.pressure.impact}</p>
+            <section className="result-card">
+              <div className="combined-title">
+                <strong>{judgement.pressure.title}</strong>
+                <span>{judgement.pressure.level}</span>
+              </div>
+              <div className="bar-row">
+                <div className="bar-label"><strong>资源</strong><span>可调用口径</span></div>
+                <div className="mini-track"><i style={{ width: `${Math.min(100, progressValue)}%` }} /></div>
+                <b>{money(metrics.callableResourcesPv)}</b>
+              </div>
+              <div className="bar-row">
+                <div className="bar-label"><strong>目标</strong><span>长期需求</span></div>
+                <div className="mini-track"><i className="target" style={{ width: '100%' }} /></div>
+                <b>{money(metrics.totalTargetPv)}</b>
+              </div>
+              {pressureGoals.map((goal) => (
+                <div className="pressure-row" key={goal.id}>
+                  <strong>{goal.name}</strong>
+                  <span><i style={{ width: `${Math.max(8, Math.round(goal.share * 100))}%` }} /></span>
+                  <b>{percent(goal.share)}</b>
+                </div>
+              ))}
+              <div className="timeline">
+                <div><b>现在</b><span>稳住现金垫</span></div>
+                <div><b>{metrics.maxGoal ? goalTiming(metrics.maxGoal) : '先补目标'}</b><span>{metrics.maxGoal?.name || '目标待补充'}</span></div>
+                <div><b>{metrics.latestGoalYear || 0}年</b><span>最远目标边界</span></div>
+              </div>
+            </section>
+          </article>
+
+          <article className="result-bubble ai">
+            <small>我的长期建议</small>
+            <p>{judgement.longTermAdvice.recommendation}</p>
+            <section className="result-card">
+              <div className="setting-row">
+                <span>调整目标</span>
+                <strong>{judgement.longTermAdvice.target}</strong>
+              </div>
+              <div className="setting-row">
+                <span>第一版动作</span>
+                <strong>{metrics.callableCoverage >= 1 ? '每月复核可调用资产' : '延后 3 年 + 降低 20% 预算'}</strong>
+              </div>
+              <div className="impact-line">
+                <span>为什么先动这里</span>
+                <b>{judgement.longTermAdvice.impact}</b>
+              </div>
+              <div className="result-track">
+                <i style={{ width: `${Math.min(100, Math.max(progressValue, Math.round(clamp(metrics.bookCoverage, 0, 1) * 100)))}%` }} />
+              </div>
+              <div className="choice-buttons">
+                <button className="primary" type="button" onClick={() => setActiveTab('goal')}>调整目标</button>
+                <button className="secondary" type="button" onClick={() => startSupplement()}>继续问 AI</button>
+              </div>
+            </section>
+          </article>
+
+          <article className="result-bubble ai">
+            <small>今年的短期计划</small>
+            <p>长期目标要靠今年的执行来托住。先把今年拆成一个能复盘的计划：每周看一次偏差，每月底看长期进度有没有变形。</p>
+            <section className="result-card">
+              <div className="plan-grid">
+                {judgement.shortTermPlan.map((item) => (
+                  <div className="setting-row" key={item.label}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+              <div className="choice-buttons">
+                <button className="primary" type="button" onClick={() => startSupplement()}>确认并继续监测</button>
+                <button className="secondary" type="button" onClick={() => setActiveTab('asset')}>调整资产</button>
+              </div>
+            </section>
+          </article>
         </div>
-        <div className="resource-target-pair">
-          <span>可调用资源 <b>{money(metrics.callableResourcesPv)}</b></span>
-          <span>账面资源 <b>{money(metrics.bookResourcesPv)}</b></span>
-          <span>目标需求 <b>{money(metrics.totalTargetPv)}</b></span>
-        </div>
-        <div className="ai-coverage-line">
-          <div className="coverage-bar" aria-label="资源覆盖目标">
-            <i style={{ width: `${Math.min(100, coverage * 100)}%` }} />
+
+        <footer className="result-composer">
+          <div className="chips">
+            <button type="button" onClick={() => startSupplement('为什么我的压力偏大？请按资产、现金流、目标三个角度解释。')}>为什么压力偏大？</button>
+            <button type="button" onClick={() => setActiveTab('goal')}>长期目标还能怎么调？</button>
+            <button type="button" onClick={() => startSupplement('请把今年的计划拆成本周能开始执行的 3 个动作。')}>本周计划怎么执行？</button>
+            <button type="button" onClick={restartOnboarding}>重新问诊</button>
           </div>
-        </div>
-        <button className="restart-mini" type="button" onClick={restartOnboarding}>
-          <RefreshCcw size={15} />
-          重新问诊
-        </button>
+          <form className="result-input-shell" onSubmit={submitQuestion}>
+            <input
+              placeholder={isModelReady ? '继续问知心姐姐...' : '先配置模型 Key，再继续问 AI'}
+              value={questionDraft}
+              onChange={(event) => setQuestionDraft(event.target.value)}
+            />
+            <button type="submit">
+              <Send size={15} />
+            </button>
+          </form>
+        </footer>
       </section>
 
-      <ReportSection title="理性的我" subtitle="为什么这么判断">
-        <div className="ratio-rail" aria-label="关键证据横向列表">
-          {aiReport.ratios.map((ratio) => (
-            <div className="ratio-card" key={ratio.name}>
-              <div className="ratio-head">
-                <strong>{ratio.name}</strong>
-                <span className={`status-pill ${ratio.status}`}>{statusLabel(ratio.status)}</span>
-              </div>
-              <b>{ratio.value}</b>
-              <p>{ratio.plain}</p>
-              <details>
-                <summary>查看精算过程</summary>
-                <small>门槛：{ratio.benchmark}</small>
-                <small>{ratio.formula}</small>
-                <small>{ratio.calculation}</small>
-              </details>
-            </div>
-          ))}
-        </div>
-        {metrics.maxGoal && (
-          <div className="pressure-summary-card">
-            <div>
-              <span>最大压力目标</span>
-              <b>{percent(metrics.maxGoalShare)} 占比</b>
-            </div>
-            <strong>{metrics.maxGoal.name}</strong>
-            <p>
-              现值 {money(metrics.maxGoal.presentValue)}，属于{priorityText(metrics.maxGoal.priority)}目标。它会直接影响其他目标的排序和取舍空间。
-            </p>
-          </div>
-        )}
-      </ReportSection>
-
-      <ReportSection title="行动的我" subtitle="本周可执行">
-        <div className="action-list">
-          {aiReport.actions.map((action, index) => (
-            <div className="action-row" key={action}>
-              <b>{index + 1}</b>
-              <span>{action}</span>
-            </div>
-          ))}
-        </div>
-      </ReportSection>
-
-      <ReportSection title="回到长期规划" subtitle="继续维护">
-      <section className="workspace-grid">
+      <section className="result-workspace-links">
         <button type="button" onClick={() => setActiveTab('asset')}>
           <PiggyBank size={18} />
           <span>我的资产</span>
@@ -1381,14 +1807,116 @@ function PlanningPage({ metrics, plan, restartOnboarding, setActiveTab, startSup
           <strong>{money(metrics.totalTargetPv)}</strong>
           <ChevronRight size={16} />
         </button>
-        <button className="ask-ai-card" type="button" onClick={startSupplement}>
+        <button className="ask-ai-card" type="button" onClick={() => startSupplement()}>
           <Sparkles size={18} />
-          <span>继续问 AI</span>
+          <span>AI 监测</span>
           <strong>补充情况、测试决定、调整目标</strong>
           <ChevronRight size={16} />
         </button>
       </section>
-      </ReportSection>
+    </section>
+  );
+}
+
+function ModelSettingsPage({ metrics, plan, settings, updateSettings }) {
+  const [testStatus, setTestStatus] = useState('');
+  const [isTesting, setIsTesting] = useState(false);
+  const config = getProviderConfig(settings);
+  const providers = Object.values(MODEL_PROVIDERS);
+
+  function updateProvider(provider) {
+    updateSettings((current) => normalizeModelSettings({ ...current, provider }));
+    setTestStatus('');
+  }
+
+  function updateProviderValue(group, value) {
+    updateSettings((current) => {
+      const normalized = normalizeModelSettings(current);
+      return normalizeModelSettings({
+        ...normalized,
+        [group]: {
+          ...normalized[group],
+          [normalized.provider]: value,
+        },
+      });
+    });
+    setTestStatus('');
+  }
+
+  async function testModel() {
+    setIsTesting(true);
+    setTestStatus('正在调用模型...');
+    try {
+      const result = await callConfiguredModel(settings, {
+        question: '请用两句话确认你能读取我当前设备上的规划摘要，并指出当前最该复核的一项。',
+        plan,
+        metrics,
+      });
+      setTestStatus(`${result.provider} / ${result.model} 可用：${result.content.slice(0, 96)}`);
+    } catch (error) {
+      setTestStatus(error.message);
+    } finally {
+      setIsTesting(false);
+    }
+  }
+
+  return (
+    <Screen eyebrow="模型" title="手机模型设置" subtitle="体验用户自己填写 Key；Key 只保存在当前手机浏览器" action={<Settings size={20} />}>
+      <section className="panel model-privacy-panel">
+        <div>
+          <ShieldCheck size={20} />
+          <strong>不会上传到「能躺了吗」服务器</strong>
+        </div>
+        <p>手机 Alpha 不做账号登录和云端保存。API Key 会写入当前手机浏览器 localStorage，只在你点击“继续问 AI”或“测试调用”时由这个浏览器直接发给所选模型服务商。</p>
+      </section>
+
+      <Panel title="服务商" icon={<KeyRound size={18} />}>
+        <div className="provider-grid">
+          {providers.map((provider) => (
+            <button
+              className={settings.provider === provider.key ? 'active' : ''}
+              key={provider.key}
+              type="button"
+              onClick={() => updateProvider(provider.key)}
+            >
+              <strong>{provider.name}</strong>
+              <span>{provider.defaultModel}</span>
+            </button>
+          ))}
+        </div>
+      </Panel>
+
+      <Panel title={`${config.name} 配置`} icon={<Settings size={18} />}>
+        <label className="input-row model-field">
+          <span>API Key</span>
+          <div>
+            <input
+              autoComplete="off"
+              placeholder={config.keyHint}
+              type="password"
+              value={config.apiKey}
+              onChange={(event) => updateProviderValue('apiKeys', event.target.value)}
+            />
+          </div>
+        </label>
+        <TextField label="模型名称" value={config.model} placeholder={config.defaultModel} onChange={(value) => updateProviderValue('models', value)} />
+        <TextField
+          label="接口地址"
+          value={config.endpoint}
+          placeholder={config.defaultEndpoint}
+          onChange={(value) => updateProviderValue('endpoints', value)}
+        />
+        <button className="primary-button" disabled={isTesting || !config.apiKey.trim()} type="button" onClick={testModel}>
+          <Sparkles size={18} />
+          测试模型调用
+        </button>
+        {testStatus && <p className={testStatus.includes('可用') ? 'model-test-status good' : 'model-test-status'}>{testStatus}</p>}
+      </Panel>
+
+      <section className="panel model-help-panel">
+        <strong>体验用户怎么填</strong>
+        <p>优先选择通义千问，在阿里云百炼控制台创建 API Key 后粘贴到这里；如果体验用户已有 DeepSeek 或 Kimi Key，也可以切换服务商后填写。模型名和接口地址保持默认即可，除非服务商文档要求调整。</p>
+      </section>
     </Screen>
   );
 }
@@ -1687,7 +2215,7 @@ function VerdictBadge({ children, tone }) {
 
 function AiDock({ onClick }) {
   return (
-    <button className="ai-dock" type="button" aria-label="AI 持续监测" onClick={onClick}>
+    <button className="ai-dock" type="button" aria-label="AI 持续监测" onClick={() => onClick()}>
       <span className="monitor-radar">
         <Radar size={18} />
       </span>
@@ -1729,6 +2257,7 @@ function BottomTabs({ activeTab, setActiveTab }) {
     ['asset', '资产', <WalletCards size={20} />],
     ['planning', '规划', <Home size={20} />],
     ['goal', '目标', <Target size={20} />],
+    ['model', '模型', <KeyRound size={20} />],
   ];
 
   return (

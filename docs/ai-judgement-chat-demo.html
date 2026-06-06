@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>知心姐姐核心判断 Demo</title>
+    <style>
+      :root {
+        color: #1c261f;
+        background: #f5f1e8;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; }
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+
+      .page {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 28px 16px;
+        background:
+          radial-gradient(circle at 12% 8%, rgba(54, 122, 87, .12), transparent 26%),
+          radial-gradient(circle at 88% 86%, rgba(188, 118, 60, .16), transparent 28%),
+          #f5f1e8;
+      }
+
+      .layout {
+        width: min(100%, 1120px);
+        display: grid;
+        grid-template-columns: minmax(330px, 430px) 1fr;
+        gap: 26px;
+        align-items: start;
+      }
+
+      .phone {
+        min-height: 820px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid rgba(39, 27, 18, .18);
+        border-radius: 32px;
+        background: #fbf8f0;
+        box-shadow: 0 28px 70px rgba(58, 43, 24, .18);
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px;
+        border-bottom: 1px solid rgba(33, 47, 39, .08);
+        background: rgba(255, 255, 255, .72);
+      }
+
+      .person {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .avatar {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 13px;
+        color: #fff;
+        background: linear-gradient(145deg, #367a57, #9b6840);
+        font-weight: 900;
+      }
+
+      .person strong { display: block; font-size: 15px; }
+      .person span, .bubble small, .muted, .metric span, .bar-label span, .timeline span, .note { color: #68746c; }
+      .person span { font-size: 12px; font-weight: 750; }
+
+      .pill {
+        padding: 7px 9px;
+        border-radius: 999px;
+        color: #367a57;
+        background: #e7f1e7;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .chat {
+        flex: 1;
+        display: grid;
+        align-content: start;
+        gap: 13px;
+        overflow-y: auto;
+        padding: 16px 14px 18px;
+      }
+
+      .bubble {
+        max-width: 92%;
+        display: grid;
+        gap: 8px;
+        padding: 13px 14px;
+        border-radius: 18px;
+        line-height: 1.58;
+      }
+
+      .bubble p { margin: 0; }
+      .bubble.ai {
+        justify-self: start;
+        border: 1px solid rgba(39, 55, 45, .08);
+        border-top-left-radius: 6px;
+        background: #fffdf8;
+        box-shadow: 0 10px 26px rgba(57, 45, 27, .07);
+      }
+      .bubble.user {
+        justify-self: end;
+        color: #fffaf0;
+        border-top-right-radius: 6px;
+        background: linear-gradient(145deg, #7b4d35, #45231b);
+      }
+
+      .card {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid rgba(45, 63, 52, .09);
+        border-radius: 14px;
+        background: #fffaf2;
+      }
+
+      .hero-card {
+        background:
+          linear-gradient(145deg, rgba(54, 122, 87, .13), rgba(250, 240, 220, .86)),
+          #fffaf2;
+      }
+
+      .card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .verdict b {
+        display: block;
+        font-size: 30px;
+        line-height: 1.05;
+      }
+
+      .verdict span {
+        display: block;
+        margin-top: 6px;
+        color: #536258;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .track {
+        height: 11px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, .72);
+      }
+
+      .track i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #367a57, #7fa75d);
+      }
+
+      .progress-head {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 7px;
+        color: #45554b;
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .metric {
+        min-width: 0;
+        display: grid;
+        gap: 5px;
+        padding: 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, .72);
+      }
+
+      .metric span { font-size: 11px; font-weight: 800; }
+      .metric strong { font-size: 18px; line-height: 1.08; }
+
+      .score-ladder {
+        display: grid;
+        gap: 8px;
+      }
+
+      .score-step {
+        display: grid;
+        grid-template-columns: 28px 1fr auto;
+        align-items: center;
+        gap: 9px;
+        padding: 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, .68);
+      }
+
+      .score-step b {
+        width: 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 9px;
+        color: #fff;
+        background: #367a57;
+        font-size: 12px;
+      }
+
+      .score-step strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .score-step span {
+        color: #68746c;
+        font-size: 11px;
+      }
+
+      .score-step em {
+        color: #367a57;
+        font-size: 12px;
+        font-style: normal;
+        font-weight: 900;
+      }
+
+      .bar-row {
+        display: grid;
+        grid-template-columns: 70px 1fr 54px;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .bar-label {
+        min-width: 0;
+        display: grid;
+        gap: 2px;
+      }
+
+      .bar-label strong { font-size: 13px; }
+      .bar-label span { font-size: 11px; }
+      .bar-row b { color: #39483f; font-size: 12px; text-align: right; }
+
+      .combined-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-bottom: 2px;
+      }
+
+      .combined-title strong {
+        font-size: 14px;
+      }
+
+      .reason-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .reason-tile {
+        display: grid;
+        gap: 4px;
+        padding: 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, .68);
+      }
+
+      .reason-tile span {
+        color: #68746c;
+        font-size: 11px;
+        font-weight: 850;
+      }
+
+      .reason-tile strong {
+        font-size: 18px;
+        line-height: 1.08;
+      }
+
+      .reason-tile small {
+        color: #68746c;
+        line-height: 1.35;
+      }
+
+      .mini-track {
+        height: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #eee8da;
+      }
+
+      .mini-track i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #367a57, #7fa75d);
+      }
+
+      .pressure-row {
+        display: grid;
+        grid-template-columns: 72px 1fr 38px;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+      }
+
+      .pressure-row strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .pressure-row i {
+        display: block;
+        height: 9px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #a36b3e, #c89555);
+      }
+
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+      }
+
+      .timeline div {
+        min-width: 0;
+        display: grid;
+        gap: 6px;
+        padding: 10px 8px;
+        border-radius: 10px;
+        background: #f6f1e7;
+      }
+
+      .timeline b { color: #367a57; font-size: 12px; }
+      .timeline span { font-size: 11px; line-height: 1.35; }
+
+      .action-row {
+        display: grid;
+        grid-template-columns: 26px 1fr;
+        gap: 9px;
+        align-items: start;
+        color: #34443a;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .action-row b {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        color: #fff;
+        background: #367a57;
+        font-size: 12px;
+      }
+
+      .plan-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .setting-row {
+        display: grid;
+        grid-template-columns: 86px 1fr;
+        gap: 10px;
+        align-items: center;
+        min-height: 42px;
+        padding: 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, .68);
+      }
+
+      .setting-row span {
+        color: #68746c;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .setting-row strong {
+        font-size: 14px;
+      }
+
+      .choice-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 2px;
+      }
+
+      .choice-buttons button {
+        min-height: 40px;
+        border-radius: 12px;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .choice-buttons .primary {
+        border: 0;
+        color: #fff;
+        background: #367a57;
+      }
+
+      .choice-buttons .secondary {
+        border: 1px solid rgba(54, 122, 87, .18);
+        color: #367a57;
+        background: #edf5e9;
+      }
+
+      .impact-line {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+        color: #45554b;
+        font-size: 13px;
+        font-weight: 850;
+      }
+
+      .composer {
+        display: grid;
+        gap: 10px;
+        padding: 12px 14px 16px;
+        border-top: 1px solid rgba(33, 47, 39, .08);
+        background: rgba(255, 255, 255, .78);
+      }
+
+      .chips {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+      }
+
+      .chips button {
+        flex: 0 0 auto;
+        min-height: 34px;
+        border: 1px solid rgba(54, 122, 87, .14);
+        border-radius: 999px;
+        padding: 0 11px;
+        color: #367a57;
+        background: #edf5e9;
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .input-shell {
+        min-height: 46px;
+        display: grid;
+        grid-template-columns: 1fr 40px;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 5px 5px 14px;
+        border: 1px solid rgba(35, 49, 41, .11);
+        border-radius: 15px;
+        background: #fff;
+      }
+
+      .input-shell input {
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+      }
+
+      .input-shell button {
+        width: 40px;
+        height: 36px;
+        border: 0;
+        border-radius: 12px;
+        color: #fff;
+        background: #367a57;
+        font-weight: 900;
+      }
+
+      .side {
+        display: grid;
+        gap: 14px;
+      }
+
+      .intro, .guide {
+        border: 1px solid rgba(33, 47, 39, .09);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, .74);
+        box-shadow: 0 18px 44px rgba(58, 43, 24, .08);
+      }
+
+      .intro { padding: 26px; }
+      .intro h1 { margin: 0; font-size: 36px; line-height: 1.08; letter-spacing: 0; }
+      .intro p { margin: 14px 0 0; color: #5d685f; font-size: 16px; line-height: 1.7; }
+
+      .guide-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+      }
+
+      .guide { padding: 18px; }
+      .guide h3 { margin: 0 0 8px; font-size: 17px; }
+      .guide p { margin: 0; color: #68746c; line-height: 1.65; }
+
+      @media (max-width: 920px) {
+        .layout { grid-template-columns: 1fr; }
+        .phone { width: min(100%, 430px); justify-self: center; }
+      }
+
+      @media (max-width: 420px) {
+        .page { padding: 0; }
+        .side { display: none; }
+        .phone { min-height: 100vh; border: 0; border-radius: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="layout">
+        <section class="phone">
+          <header class="topbar">
+            <div class="person">
+              <div class="avatar">姐</div>
+              <div>
+                <strong>知心姐姐</strong>
+                <span>家庭财务 AI</span>
+              </div>
+            </div>
+            <div class="pill">已完成问诊</div>
+          </header>
+
+          <div class="chat" id="chat">
+            <div class="bubble user">
+              <p>我把家里的资产、收入、支出和未来目标都填完了。你直接告诉我，我现在到底能不能躺？</p>
+            </div>
+
+            <div class="bubble ai">
+              <small>知心姐姐</small>
+              <p>我先接住你这个问题：你不是在偷懒，也不是只想逃避工作。你真正想知道的是，家里有没有一条稳稳的退路。</p>
+            </div>
+
+            <div class="bubble ai">
+              <small>一句话承接</small>
+              <p>我听懂了，你不是只想问一个数字，而是在问：如果按现在这套家庭目标走，自己到底能不能安心退一步。</p>
+            </div>
+
+            <div class="bubble ai">
+              <small>核心结论</small>
+              <p>结论是：现在还不能完全躺，先稳住。不是因为你没有基础，而是目前计划压力偏大，尤其是换房和教育两个目标叠在一起，会把安全余量吃掉。</p>
+              <section class="card hero-card">
+                <div class="card-head">
+                  <div>
+                    <strong>今天的判断</strong>
+                    <div class="muted">基于当前目标和保守假设</div>
+                  </div>
+                  <span class="pill">计划压力偏大</span>
+                </div>
+                <div class="verdict">
+                  <b>先稳住，再优化</b>
+                  <span>可以继续朝“半躺”推进，但不建议现在直接停下长期收入。核心原因：计划压力偏大。</span>
+                </div>
+              </section>
+            </div>
+
+            <div class="bubble ai">
+              <small>核心指标支撑</small>
+              <p>我先不讲一堆公式，只看四个会影响判断的指标：覆盖率、缺口、时间和现金垫。它们共同说明：方向没错，但现在还不够松。</p>
+              <section class="card">
+                <div>
+                  <div class="progress-head"><span>能躺进度</span><b>68%</b></div>
+                  <div class="track"><i style="width: 68%"></i></div>
+                </div>
+                <div class="metric-grid">
+                  <div class="metric"><span>可调用覆盖</span><strong>68%</strong></div>
+                  <div class="metric"><span>当前缺口</span><strong>88万</strong></div>
+                  <div class="metric"><span>现金垫</span><strong>6个月</strong></div>
+                </div>
+                <div class="metric-grid">
+                  <div class="metric"><span>预计还需</span><strong>4.5年</strong></div>
+                  <div class="metric"><span>月结余目标</span><strong>1.5万</strong></div>
+                  <div class="metric"><span>年度可规划</span><strong>18万</strong></div>
+                </div>
+              </section>
+            </div>
+
+            <div class="bubble ai">
+              <small>压力来源</small>
+              <p>压力来源集中在一处：未来 8 到 12 年，换房和教育连续发生。单独看都还能处理，放在一起就会明显挤压现金流。</p>
+              <section class="card">
+                <div class="combined-title">
+                  <strong>压力集中在 8-12 年后</strong>
+                  <span class="pill">换房 + 教育</span>
+                </div>
+                <div class="bar-row">
+                  <div class="bar-label"><strong>资源</strong><span>可调用口径</span></div>
+                  <div class="mini-track"><i style="width: 68%"></i></div>
+                  <b>186万</b>
+                </div>
+                <div class="bar-row">
+                  <div class="bar-label"><strong>目标</strong><span>长期需求</span></div>
+                  <div class="mini-track"><i style="width: 100%; background: linear-gradient(90deg, #9b6840, #c89555)"></i></div>
+                  <b>274万</b>
+                </div>
+                <div class="pressure-row"><strong>孩子教育</strong><span><i style="width: 88%"></i></span><b>38%</b></div>
+                <div class="pressure-row"><strong>退休生活</strong><span><i style="width: 68%"></i></span><b>29%</b></div>
+                <div class="pressure-row"><strong>换房</strong><span><i style="width: 56%"></i></span><b>24%</b></div>
+                <div class="timeline">
+                  <div><b>现在</b><span>稳住现金垫</span></div>
+                  <div><b>8年</b><span>换房压力出现</span></div>
+                  <div><b>12年</b><span>教育支出集中</span></div>
+                  <div><b>20年</b><span>退休生活开始</span></div>
+                </div>
+              </section>
+            </div>
+
+            <div class="bubble ai">
+              <small>我的长期建议</small>
+              <p>我建议你先不要动孩子教育和父母养老。长期目标里，优先调整“换房”：把换房从 8 年后延到 11 年后，并先按 80% 预算做一版。</p>
+              <section class="card">
+                <div class="setting-row">
+                  <span>调整目标</span>
+                  <strong>换房：8 年后 → 11 年后</strong>
+                </div>
+                <div class="setting-row">
+                  <span>预算版本</span>
+                  <strong>100 万 → 80 万保守版</strong>
+                </div>
+                <div class="impact-line">
+                  <span>调整后预计影响</span>
+                  <b>缺口降至 42 万，能躺进度约 82%</b>
+                </div>
+                <div class="track"><i style="width: 82%"></i></div>
+                <div class="choice-buttons">
+                  <button class="primary" type="button" data-reply="confirmLong">确认长期调整</button>
+                  <button class="secondary" type="button" data-reply="changeLong">我想改目标</button>
+                </div>
+              </section>
+            </div>
+
+            <div class="bubble ai">
+              <small>今年的短期计划</small>
+              <p>长期目标要靠今年的执行来托住。先把今年拆成一个可以复盘的计划：每月记录收入、支出和结余；每周看一次偏差，每月来复盘一次长期进度有没有变。</p>
+              <section class="card">
+                <div class="plan-grid">
+                  <div class="setting-row">
+                    <span>月收入目标</span>
+                    <strong>不低于 3.5 万</strong>
+                  </div>
+                  <div class="setting-row">
+                    <span>月支出上限</span>
+                    <strong>控制在 2 万以内</strong>
+                  </div>
+                  <div class="setting-row">
+                    <span>月结余目标</span>
+                    <strong>至少 1.5 万进入长期规划</strong>
+                  </div>
+                  <div class="setting-row">
+                    <span>复盘节奏</span>
+                    <strong>每周五记账 10 分钟，每月底复盘一次</strong>
+                  </div>
+                </div>
+                <div class="choice-buttons">
+                  <button class="primary" type="button" data-reply="confirmWeek">确认本周计划</button>
+                  <button class="secondary" type="button" data-reply="changeWeek">调整执行数字</button>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <footer class="composer">
+            <div class="chips">
+              <button type="button" data-reply="detail">为什么压力偏大？</button>
+              <button type="button" data-reply="adjust">长期目标还能怎么调？</button>
+              <button type="button" data-reply="review">本周计划怎么执行？</button>
+              <button type="button" data-reply="month">月底复盘看什么？</button>
+            </div>
+            <label class="input-shell">
+              <input placeholder="继续问知心姐姐..." />
+              <button type="button">发</button>
+            </label>
+          </footer>
+        </section>
+
+        <aside class="side">
+          <section class="intro">
+            <h1>核心判断先说清楚，再落到长期和短期计划。</h1>
+            <p>这个版本按六段走：一句话承接、核心结论、核心指标支撑、压力来源、长期建议、短期计划。用户看到结论后，可以确认规划设置，也可以马上调整。</p>
+          </section>
+
+          <section class="guide-grid">
+            <article class="guide"><h3>1. 一句话承接</h3><p>先复述用户真正关心的问题，让用户知道 AI 听懂了。</p></article>
+            <article class="guide"><h3>2. 核心结论</h3><p>直接回答能不能躺，并点出“计划压力偏大”这个核心原因。</p></article>
+            <article class="guide"><h3>3. 核心指标支撑</h3><p>用覆盖率、缺口、现金垫和还需时间支撑判断。</p></article>
+            <article class="guide"><h3>4. 压力来源</h3><p>把目标压力和时间线放在同一个地方讲清楚。</p></article>
+            <article class="guide"><h3>5. 长期建议</h3><p>明确建议改哪个长期目标，并展示调整后的影响。</p></article>
+            <article class="guide"><h3>6. 短期计划</h3><p>今年每月收入、支出、结余和复盘节奏都要落成数字。</p></article>
+          </section>
+
+          <p class="note">这只是讨论用原型。若方向确认，再把这套结构迁移进现有 React App 的规划页。</p>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const replies = {
+        detail: "压力偏大不是因为你一无所有，而是未来 8 到 12 年里，换房和教育支出靠得太近。资源没有崩，但安全余量不够，所以要先调目标节奏。",
+        adjust: "长期目标有三种调法：延后换房、降低换房预算、或把换房从必须目标改成想要目标。我建议先用“延后 3 年 + 80% 预算”作为第一版。",
+        review: "本周先做两件事：确认今年每月收入和支出目标；然后把本周实际支出记一次。我们下周只看偏差，不重新推翻整套规划。",
+        month: "月底复盘只看三件事：月收入是否达标，月支出有没有超 2 万，月结余有没有达到 1.5 万。达标就保持，不达标再看长期目标要不要重算。",
+        confirmLong: "好，我先把长期调整记为：换房延后到 11 年后，并按 80 万保守版预算。下一次复盘时，我会优先看这个调整有没有让整体压力下降。",
+        changeLong: "可以，我们不急着确认。你可以改三类信息：换房年份、换房预算、或者换房是不是必须目标。我会根据你改的内容重新计算进度。",
+        confirmWeek: "好，这周计划我记下了：月收入不低于 3.5 万，月支出控制在 2 万以内，每周五记账 10 分钟。下次回来我会先帮你看进度偏差。",
+        changeWeek: "没问题。短期计划可以先改月收入目标、支出上限、结余目标或复盘频率。执行数字一定要贴近现实，不然计划会变成压力。"
+      };
+
+      document.querySelectorAll("[data-reply]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const chat = document.getElementById("chat");
+          chat.insertAdjacentHTML("beforeend", `<div class="bubble user"><p>${button.textContent}</p></div>`);
+          chat.insertAdjacentHTML("beforeend", `<div class="bubble ai"><small>知心姐姐</small><p>${replies[button.dataset.reply]}</p></div>`);
+          chat.scrollTo({ top: chat.scrollHeight, behavior: "smooth" });
+        });
+      });
+    </script>
+  </body>
+</html>

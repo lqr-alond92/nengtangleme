@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Family planning map icon">
+  <defs>
+    <linearGradient id="bg" x1="56" x2="456" y1="70" y2="442" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5a2d20" />
+      <stop offset="1" stop-color="#20110d" />
+    </linearGradient>
+    <linearGradient id="gold" x1="124" x2="388" y1="130" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe0a8" />
+      <stop offset="1" stop-color="#b87947" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="#f8f0e5" />
+  <rect x="46" y="46" width="420" height="420" rx="88" fill="url(#bg)" />
+  <path d="M150 350c36-72 78-108 126-108 34 0 58 18 86 48" fill="none" stroke="#fff2dc" stroke-linecap="round" stroke-width="30" />
+  <path d="M156 308h74M282 308h74" fill="none" stroke="url(#gold)" stroke-linecap="round" stroke-width="22" />
+  <path d="M194 226 256 174l62 52" fill="none" stroke="url(#gold)" stroke-linecap="round" stroke-linejoin="round" stroke-width="28" />
+  <path d="M216 232v62h80v-62" fill="none" stroke="#fff2dc" stroke-linecap="round" stroke-linejoin="round" stroke-width="22" />
+  <circle cx="156" cy="350" r="23" fill="#eec27d" />
+  <circle cx="256" cy="242" r="23" fill="#fff2dc" />
+  <circle cx="362" cy="290" r="23" fill="#b87947" />
+</svg>

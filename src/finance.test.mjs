@@ -145,3 +145,49 @@ test('ai report flags asset lock risk when book coverage hides low callable cove
     ['可调用覆盖率', '账面覆盖率', '可动用资产占比', '不易变现资产占比'],
   );
 });
+
+test('ai report builds six-part judgement content for the planning page', () => {
+  const plan = {
+    liquidAssets: 220000,
+    lockedAssets: 980000,
+    liabilities: 350000,
+    annualIncome: 420000,
+    annualExpense: 240000,
+    incomeGrowthRate: 0,
+    expenseGrowthRate: 0,
+    workYears: 20,
+    returnRate: 4,
+    inflationRate: 3,
+    discountRate: 3,
+    goals: [
+      {
+        id: 'education',
+        name: '孩子教育',
+        kind: 'oneTime',
+        priority: 'need',
+        amount: 800000,
+        year: 12,
+      },
+      {
+        id: 'home-upgrade',
+        name: '换房',
+        kind: 'oneTime',
+        priority: 'want',
+        amount: 1000000,
+        year: 8,
+      },
+    ],
+  };
+
+  const metrics = buildMetrics(plan);
+  const report = buildAiReport(plan, metrics);
+
+  assert.match(report.judgement.leadIn, /工作强度/);
+  assert.equal(report.judgement.keyMetrics.length, 4);
+  assert.equal(report.judgement.longTermAdvice.target, metrics.maxGoal.name);
+  assert.equal(report.judgement.shortTermPlan.length, 4);
+  assert.deepEqual(
+    report.judgement.shortTermPlan.map((item) => item.label),
+    ['月收入目标', '月支出上限', '月结余目标', '复盘节奏'],
+  );
+});

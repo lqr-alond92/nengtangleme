@@ -1,0 +1,1578 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>能躺了吗 - 原交互可点击复盘</title>
+  <style>
+    :root {
+      --ink: #17211b;
+      --muted: #68736b;
+      --paper: #fffdf7;
+      --surface: #f8f5ed;
+      --line: rgba(31, 45, 37, .11);
+      --green: #2f7d57;
+      --green-soft: #e8f2e5;
+      --gold: #c87a2a;
+      --gold-soft: #f8ead8;
+      --danger: #c94a3f;
+      --danger-soft: #f8e5df;
+      --brown: #2a110e;
+      --brown-2: #5b281c;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 8%, rgba(47, 125, 87, .12), transparent 24%),
+        radial-gradient(circle at 90% 10%, rgba(200, 122, 42, .13), transparent 24%),
+        linear-gradient(180deg, #fbfaf5, #eee9df);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .board {
+      width: min(1180px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 34px 28px 48px;
+    }
+
+    .board-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 26px;
+    }
+
+    .board-head h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .board-head p {
+      max-width: 760px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.62;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .toolbar button,
+    .primary {
+      min-height: 40px;
+      border: 0;
+      border-radius: 8px;
+      padding: 0 14px;
+      color: #fff;
+      background: var(--green);
+      font-weight: 850;
+      box-shadow: 0 14px 30px rgba(47, 125, 87, .16);
+    }
+
+    .toolbar button.secondary,
+    .secondary {
+      color: var(--green);
+      border: 1px solid rgba(47, 125, 87, .16);
+      background: rgba(255, 255, 255, .75);
+      box-shadow: none;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 28px;
+      align-items: start;
+    }
+
+    .phone-shell {
+      width: min(390px, 100%);
+      height: 812px;
+      position: sticky;
+      top: 22px;
+      overflow: hidden;
+      margin: 0 auto;
+      border: 1px solid rgba(31, 45, 37, .20);
+      border-radius: 40px;
+      background: #1f1713;
+      box-shadow:
+        0 30px 72px rgba(58, 45, 24, .22),
+        inset 0 0 0 8px rgba(255, 255, 255, .30);
+    }
+
+    .phone-shell::before {
+      content: "";
+      position: absolute;
+      z-index: 20;
+      top: 13px;
+      left: 50%;
+      width: 94px;
+      height: 7px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .34);
+    }
+
+    .screen {
+      height: 100%;
+      overflow-y: auto;
+      position: relative;
+      padding: 50px 18px 96px;
+      background:
+        radial-gradient(circle at 12% 7%, rgba(47, 125, 87, .09), transparent 30%),
+        radial-gradient(circle at 86% 18%, rgba(200, 122, 42, .11), transparent 28%),
+        linear-gradient(180deg, #fbf8f1 0%, #f2ecdf 100%);
+      scrollbar-width: none;
+    }
+
+    .screen::-webkit-scrollbar { display: none; }
+
+    .landing {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 32px 6px 0;
+      color: #fff8ed;
+      background:
+        linear-gradient(180deg, rgba(35, 15, 13, .98), rgba(58, 23, 17, .94) 52%, rgba(112, 54, 31, .88));
+      border-radius: 28px;
+      margin: -22px -8px -70px;
+      padding-left: 24px;
+      padding-right: 24px;
+    }
+
+    .brand-row,
+    .screen-head,
+    .top-row,
+    .section-head,
+    .bottom-tabs {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 950;
+    }
+
+    .mark {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: var(--brown);
+      background: #fff8ed;
+      font-size: 14px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid rgba(255, 248, 237, .18);
+      border-radius: 8px;
+      color: #ffe0ae;
+      background: rgba(255, 248, 237, .10);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #6be49a;
+      box-shadow: 0 0 0 5px rgba(107, 228, 154, .14);
+    }
+
+    .hero-copy {
+      margin-top: 52px;
+    }
+
+    .hero-copy h2 {
+      margin: 0;
+      font-size: 31px;
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .hero-copy p {
+      margin: 14px 0 0;
+      color: rgba(255, 248, 237, .70);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .dialogue-stack {
+      display: grid;
+      gap: 10px;
+      margin-top: 34px;
+    }
+
+    .dialogue-stack p,
+    .bubble {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .dialogue-stack p {
+      color: rgba(255, 248, 237, .88);
+      background: rgba(255, 248, 237, .10);
+      border: 1px solid rgba(255, 248, 237, .12);
+    }
+
+    .question-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    .question-list button,
+    .choice-grid button,
+    .workspace-grid button,
+    .goal-card,
+    .metric,
+    .panel,
+    .ratio-card,
+    .action-row {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .82);
+      box-shadow: 0 14px 30px rgba(53, 43, 25, .06);
+    }
+
+    .question-list button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 58px;
+      padding: 0 14px;
+      color: var(--brown);
+      background: #fff8ed;
+      font-weight: 900;
+      text-align: left;
+    }
+
+    .question-list b {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff8ed;
+      background: var(--brown-2);
+    }
+
+    .chat-feed {
+      display: grid;
+      gap: 10px;
+      padding-bottom: 12px;
+    }
+
+    .bubble {
+      max-width: 88%;
+      color: #243229;
+      background: #fffdf7;
+      border: 1px solid rgba(31, 45, 37, .08);
+      box-shadow: 0 12px 26px rgba(53, 43, 25, .06);
+    }
+
+    .bubble.user {
+      justify-self: end;
+      color: #fff;
+      background: var(--green);
+      border-color: rgba(47, 125, 87, .18);
+    }
+
+    .bubble.ai::before {
+      content: "AI";
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      margin-right: 8px;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--green);
+      font-size: 11px;
+      font-weight: 950;
+      vertical-align: top;
+    }
+
+    .dock {
+      position: sticky;
+      bottom: 0;
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid rgba(31, 45, 37, .09);
+      border-radius: 14px;
+      background: rgba(255, 253, 247, .95);
+      box-shadow: 0 -18px 36px rgba(53, 43, 25, .09);
+      backdrop-filter: blur(14px);
+    }
+
+    .dock strong {
+      font-size: 14px;
+    }
+
+    .dock small {
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .quick-grid,
+    .choice-grid,
+    .summary-grid,
+    .field-grid,
+    .workspace-grid,
+    .goal-summary {
+      display: grid;
+      gap: 9px;
+    }
+
+    .quick-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .quick-grid button,
+    .choice-grid button,
+    .segment button,
+    .ghost-btn {
+      min-height: 42px;
+      border: 1px solid rgba(47, 125, 87, .14);
+      border-radius: 8px;
+      color: #28543c;
+      background: #eef5e8;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .choice-grid button {
+      min-height: 44px;
+      text-align: left;
+      padding: 0 12px;
+      background: #fffdf7;
+    }
+
+    .choice-grid button.selected,
+    .segment button.active {
+      color: #fff;
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .input-line {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .input-line input,
+    .field input {
+      width: 100%;
+      min-width: 0;
+      height: 42px;
+      border: 1px solid rgba(31, 45, 37, .10);
+      border-radius: 8px;
+      padding: 0 12px;
+      outline: 0;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 750;
+    }
+
+    .input-line em,
+    .field em {
+      color: var(--muted);
+      font-size: 12px;
+      font-style: normal;
+      white-space: nowrap;
+    }
+
+    .loading {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .loading-card {
+      display: grid;
+      gap: 14px;
+      width: 100%;
+      padding: 24px;
+      border-radius: 18px;
+      color: #fff8ed;
+      background:
+        linear-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, .035) 1px, transparent 1px),
+        linear-gradient(180deg, var(--brown), var(--brown-2));
+      background-size: 40px 40px, 40px 40px, auto;
+      box-shadow: 0 22px 48px rgba(43, 20, 10, .20);
+    }
+
+    .loading-card h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .loading-card p,
+    .loading-card span {
+      margin: 0;
+      color: rgba(255, 248, 237, .70);
+      line-height: 1.55;
+    }
+
+    .loading-lines {
+      display: grid;
+      gap: 8px;
+      text-align: left;
+    }
+
+    .loading-lines span {
+      padding: 9px 11px;
+      border-radius: 8px;
+      background: rgba(255, 248, 237, .10);
+    }
+
+    .screen-head {
+      align-items: flex-start;
+      padding: 4px 2px 12px;
+    }
+
+    .screen-head span,
+    .metric span,
+    .goal-card span,
+    .section-head span,
+    .ratio-card p,
+    .field span,
+    .side-card p,
+    .side-card li {
+      color: var(--muted);
+    }
+
+    .screen-head h2 {
+      margin: 4px 0 4px;
+      font-size: 27px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .screen-head p {
+      margin: 0;
+      color: #6d756e;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .head-icon,
+    .ai-float {
+      display: grid;
+      place-items: center;
+      color: var(--green);
+      border: 1px solid rgba(47, 125, 87, .13);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .72);
+      box-shadow: 0 12px 28px rgba(62, 51, 30, .07);
+    }
+
+    .head-icon {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+    }
+
+    .summary-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 12px;
+      background: #f5f2e9;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 19px;
+      line-height: 1.1;
+    }
+
+    .panel {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 15px;
+      background: rgba(255, 255, 255, .84);
+    }
+
+    .panel h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .ai-card {
+      overflow: hidden;
+      color: #17211b;
+      background:
+        linear-gradient(145deg, rgba(47, 125, 87, .15), rgba(250, 244, 218, .94)),
+        #fffaf0;
+    }
+
+    .ai-card h3 {
+      margin: 12px 0 8px;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .ai-card p {
+      margin: 0;
+      color: #516158;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .answer-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .answer-strip div {
+      padding: 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .66);
+    }
+
+    .answer-strip span {
+      display: block;
+      color: #607066;
+      font-size: 11px;
+    }
+
+    .answer-strip strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 15px;
+    }
+
+    .bar {
+      height: 10px;
+      overflow: hidden;
+      margin-top: 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .70);
+    }
+
+    .bar i {
+      display: block;
+      width: 62%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .section-head {
+      align-items: end;
+      margin: 14px 2px 10px;
+    }
+
+    .section-head strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .section-head span {
+      display: block;
+      margin-top: 2px;
+      font-size: 12px;
+    }
+
+    .ratio-row {
+      display: grid;
+      grid-auto-columns: minmax(168px, 66%);
+      grid-auto-flow: column;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scrollbar-width: none;
+    }
+
+    .ratio-row::-webkit-scrollbar { display: none; }
+
+    .ratio-card {
+      min-height: 148px;
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      background: #f9f7f1;
+    }
+
+    .ratio-card b {
+      font-size: 23px;
+      line-height: 1;
+    }
+
+    .ratio-card p {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.42;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      width: max-content;
+      padding: 0 8px;
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .pill.warning {
+      color: var(--gold);
+      background: var(--gold-soft);
+    }
+
+    .pill.danger {
+      color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .action-row {
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 10px;
+      padding: 12px;
+      background: linear-gradient(145deg, #eef5e8, #f8f4ea);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .action-row b {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--green);
+    }
+
+    .workspace-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .workspace-grid button {
+      min-height: 54px;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 0 13px;
+      text-align: left;
+      color: var(--ink);
+      background: #fffdf7;
+    }
+
+    .workspace-grid strong {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .field-grid {
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .field span {
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .field div {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .segment {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .goal-card {
+      display: grid;
+      gap: 8px;
+      padding: 13px;
+      background: #fffdf7;
+    }
+
+    .goal-card strong {
+      font-size: 15px;
+    }
+
+    .goal-card div {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    .bottom-tabs {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 15px;
+      height: 64px;
+      padding: 7px;
+      border: 1px solid rgba(31, 45, 37, .10);
+      border-radius: 18px;
+      background: rgba(255, 253, 247, .93);
+      box-shadow: 0 -12px 26px rgba(53, 43, 25, .09);
+      backdrop-filter: blur(14px);
+    }
+
+    .bottom-tabs button {
+      flex: 1;
+      height: 100%;
+      border: 0;
+      border-radius: 12px;
+      color: #6d756e;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .bottom-tabs button.active {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .ai-float {
+      position: absolute;
+      right: 24px;
+      bottom: 92px;
+      display: flex;
+      gap: 7px;
+      min-height: 42px;
+      padding: 0 12px;
+      border-radius: 999px;
+      color: #fff;
+      background:
+        radial-gradient(circle, rgba(255, 217, 154, .16), transparent 52%),
+        linear-gradient(145deg, var(--brown), var(--brown-2));
+      font-size: 12px;
+      font-weight: 950;
+      z-index: 10;
+    }
+
+    .radar {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #ffe0ae;
+      border-radius: 999px;
+      position: relative;
+    }
+
+    .radar::after {
+      content: "";
+      position: absolute;
+      inset: 3px;
+      border-top: 2px solid #ffe0ae;
+      transform-origin: left bottom;
+      transform: rotate(32deg);
+    }
+
+    .side {
+      display: grid;
+      gap: 14px;
+    }
+
+    .side-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 253, 247, .82);
+      box-shadow: 0 18px 40px rgba(53, 43, 25, .07);
+    }
+
+    .side-card h2,
+    .side-card h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .side-card p,
+    .side-card li {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .side-card ol,
+    .side-card ul {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .stage-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .stage-list button {
+      min-height: 38px;
+      border: 1px solid rgba(31, 45, 37, .10);
+      border-radius: 8px;
+      background: #fff;
+      color: #526057;
+      text-align: left;
+      padding: 0 11px;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .stage-list button.active {
+      color: var(--green);
+      border-color: rgba(47, 125, 87, .24);
+      background: var(--green-soft);
+    }
+
+    @media (max-width: 900px) {
+      .board {
+        padding: 24px 14px 36px;
+      }
+
+      .board-head,
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .phone-shell {
+        position: relative;
+        top: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="board-head">
+      <div>
+        <h1>原交互可点击复盘</h1>
+        <p>这是按当前代码复原的完整交互：首次进入、AI 问诊、目标补全、生成规划、三 Tab 主应用，以及 AI 监测补充。这里是讨论用原型，不影响正式 App。</p>
+      </div>
+      <div class="toolbar">
+        <button class="secondary" type="button" data-jump="landing">回到首页</button>
+        <button type="button" data-action="autoflow">快速生成规划</button>
+      </div>
+    </header>
+
+    <section class="layout">
+      <div class="phone-shell" aria-label="能躺了吗原交互手机预览">
+        <div class="screen" id="screen"></div>
+      </div>
+
+      <aside class="side">
+        <section class="side-card">
+          <h2>怎么点</h2>
+          <p>从左侧手机里的首页开始点。问诊阶段可以直接点快捷选项，也可以填数字。生成规划后，用底部 Tab 和右下角 AI 监测继续探索。</p>
+        </section>
+
+        <section class="side-card">
+          <h3>流程节点</h3>
+          <div class="stage-list" id="stageList"></div>
+        </section>
+
+        <section class="side-card">
+          <h3>当前复盘重点</h3>
+          <ol>
+            <li>旧版把 AI 问诊作为第一次进入的主体验。</li>
+            <li>正式 App 只有资产、规划、目标三个 Tab。</li>
+            <li>AI 不是独立 Tab，而是规划页里的长期入口。</li>
+            <li>资产判断已经区分账面资源和可调用资源。</li>
+          </ol>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const screen = document.querySelector('#screen');
+    const stageList = document.querySelector('#stageList');
+
+    const defaultPlan = {
+      liquidAssets: 220000,
+      lockedAssets: 980000,
+      liabilities: 350000,
+      annualIncome: 420000,
+      annualExpense: 240000,
+      goals: [
+        { id: 'retirement', name: '基本退休生活', priority: 'need', kind: 'recurring', amount: 12000, startYear: 20, endYear: 50, frequency: 'monthly' },
+        { id: 'education', name: '孩子教育', priority: 'need', kind: 'oneTime', amount: 800000, year: 12 },
+        { id: 'home', name: '换房', priority: 'want', kind: 'oneTime', amount: 1000000, year: 8 },
+      ],
+    };
+
+    let plan = structuredClone(defaultPlan);
+    let activeTab = 'planning';
+    let selectedRequired = [];
+    let selectedOptional = [];
+    let step = 'landing';
+    let chat = [];
+
+    const stages = [
+      ['landing', '1. 首次破冰页'],
+      ['chatStart', '2. AI 开始问诊'],
+      ['assets', '3. 资产与现金流'],
+      ['required', '4. 必须目标'],
+      ['optional', '5. 想要目标'],
+      ['loading', '6. 生成规划页'],
+      ['app', '7. 三 Tab 主应用'],
+      ['supplement', '8. AI 监测补充'],
+    ];
+
+    const requiredGoals = [
+      { id: 'basic-retirement', name: '基本退休生活', kind: 'recurring', amount: 12000, startYear: 20, endYear: 50, frequency: 'monthly' },
+      { id: 'education', name: '孩子教育', kind: 'oneTime', amount: 800000, year: 12 },
+      { id: 'parents', name: '父母养老', kind: 'recurring', amount: 60000, startYear: 5, endYear: 25, frequency: 'yearly' },
+      { id: 'medical', name: '医疗风险', kind: 'oneTime', amount: 300000, year: 10 },
+      { id: 'mortgage', name: '房贷 / 换房压力', kind: 'oneTime', amount: 1000000, year: 8 },
+    ];
+
+    const optionalGoals = [
+      { id: 'early-retire', name: '提前退休', kind: 'recurring', amount: 18000, startYear: 15, endYear: 50, frequency: 'monthly' },
+      { id: 'travel', name: '长期旅行', kind: 'recurring', amount: 80000, startYear: 5, endYear: 15, frequency: 'yearly' },
+      { id: 'bigger-home', name: '换更大的房子', kind: 'oneTime', amount: 1500000, year: 8 },
+      { id: 'car', name: '买车', kind: 'oneTime', amount: 250000, year: 3 },
+      { id: 'freelance', name: '创业 / 自由职业', kind: 'oneTime', amount: 500000, year: 4 },
+    ];
+
+    function money(value) {
+      const amount = Number.isFinite(Number(value)) ? Number(value) : 0;
+      if (Math.abs(amount) >= 10000) return `${Math.round(amount / 10000)}万`;
+      return String(Math.round(amount));
+    }
+
+    function percent(value) {
+      return `${Math.round(value * 100)}%`;
+    }
+
+    function metrics() {
+      const assets = plan.liquidAssets + plan.lockedAssets;
+      const netWorth = assets - plan.liabilities;
+      const annualSurplus = plan.annualIncome - plan.annualExpense;
+      const surplusPv = annualSurplus * 14;
+      const goalPv = plan.goals.reduce((sum, goal) => {
+        const amount = goal.kind === 'recurring' ? goal.amount * 12 * Math.max(1, goal.endYear - goal.startYear + 1) : goal.amount;
+        return sum + Math.round(amount * .62);
+      }, 0);
+      const callableResources = plan.liquidAssets + surplusPv;
+      const bookResources = netWorth + surplusPv;
+      return {
+        assets,
+        netWorth,
+        annualSurplus,
+        goalPv,
+        callableResources,
+        bookResources,
+        callableCoverage: goalPv > 0 ? callableResources / goalPv : 1,
+        bookCoverage: goalPv > 0 ? bookResources / goalPv : 1,
+        liquidRatio: assets > 0 ? plan.liquidAssets / assets : 0,
+        lockedRatio: assets > 0 ? plan.lockedAssets / assets : 0,
+      };
+    }
+
+    function setStep(nextStep) {
+      step = nextStep;
+      renderStages();
+    }
+
+    function renderStages() {
+      stageList.innerHTML = stages.map(([id, label]) => (
+        `<button class="${isStageActive(id) ? 'active' : ''}" type="button" data-jump="${id}">${label}</button>`
+      )).join('');
+    }
+
+    function isStageActive(id) {
+      if (id === step) return true;
+      if (id === 'app' && ['planning', 'asset', 'goal'].includes(step)) return true;
+      if (id === 'assets' && ['liquidAssets', 'lockedAssets', 'liabilities', 'annualIncome', 'annualSurplus', 'annualExpense'].includes(step)) return true;
+      return false;
+    }
+
+    function push(role, text) {
+      chat.push({ role, text });
+    }
+
+    function renderChat() {
+      return `<div class="chat-feed">${chat.map((item) => `<p class="bubble ${item.role}">${item.text}</p>`).join('')}</div>`;
+    }
+
+    function renderLanding() {
+      setStep('landing');
+      screen.innerHTML = `
+        <section class="landing">
+          <header class="brand-row">
+            <div class="brand"><span class="mark">躺</span><span>能躺了吗？</span></div>
+            <div class="status"><i class="dot"></i>AI 在线</div>
+          </header>
+          <section class="hero-copy">
+            <h2>你现在的财务焦虑，到底是不是多想？</h2>
+            <p>不是安慰你，也不是吓你。我们会用你的真实数据，帮你看清哪些担心只是情绪，哪些风险已经写在数字里。</p>
+          </section>
+          <section class="dialogue-stack">
+            <p>你可能不是想躺平。</p>
+            <p>你只是想知道，自己到底有没有退路。</p>
+            <p>先选一个最担心的问题，我来帮你算清楚。</p>
+          </section>
+          <section class="question-list">
+            <button type="button" data-start><span>生成我的家庭财务规划</span><b>1</b></button>
+            <button type="button" data-start><span>目标都想要，最后谁先出局？</span><b>2</b></button>
+            <button type="button" data-start><span>这笔大钱，是消费还是透支？</span><b>3</b></button>
+          </section>
+        </section>
+      `;
+    }
+
+    function startInterview() {
+      setStep('chatStart');
+      chat = [
+        { role: 'user', text: '我想生成一份家庭财务规划。' },
+        { role: 'ai', text: '我先帮你搭一张家庭财务地图。你不用一次填完，我会一个问题一个问题问，只收集会影响人生计划的数字。' },
+      ];
+      renderNumberStep('liquidAssets');
+    }
+
+    function numberConfig(id) {
+      return {
+        liquidAssets: ['请填写可立即动用资产', '先不看房子这些大件，只填短期真正能拿出来用的钱。', '10', '30', '80', '可立即动用资产'],
+        lockedAssets: ['请填写不易变现资产', '房子、车、长期资产等账面上有、但不太能直接花的钱。', '50', '150', '500', '不易变现资产'],
+        liabilities: ['请填写你的总负债', '房贷、车贷、信用贷、消费贷都算进去。', '0', '50', '150', '总负债'],
+        annualIncome: ['请填写家庭年收入', '按税后口径估算，包括工资、经营收入和稳定副业。', '20', '40', '80', '家庭年收入'],
+        annualSurplus: ['请填写年度可规划结余', '一年结束后，真正能放进长期规划的钱。', '10', '20', '35', '年度可规划结余'],
+        annualExpense: ['请填写年度总支出', '日常生活、房贷房租、孩子、父母、保险和固定支出都算进去。', '15', '25', '40', '年度总支出'],
+      }[id];
+    }
+
+    function renderNumberStep(id) {
+      setStep(id);
+      const [title, helper, a, b, c] = numberConfig(id);
+      if (!chat.at(-1)?.field || chat.at(-1).field !== id) {
+        const questions = {
+          liquidAssets: '先不看房子这些大件。现在家里真正能拿出来用的钱，大概有多少？按万元填就行。',
+          lockedAssets: '再看那些账面上有、但不太能直接花的钱，比如房子、车、长期资产，大概有多少？',
+          liabilities: '这些资产背后，还有多少负债？比如房贷、车贷、信用贷。',
+          annualIncome: '接下来，一年税后大概能赚多少钱？',
+          annualSurplus: '那一年下来，大概能剩下多少钱用于长期规划？',
+          annualExpense: '那我先问年度总支出。一年大概多少万元？',
+        };
+        chat.push({ role: 'ai', text: questions[id], field: id });
+      }
+      screen.innerHTML = `
+        ${renderChat()}
+        <section class="dock">
+          <strong>${title}</strong>
+          <small>${helper}</small>
+          <div class="quick-grid">
+            ${[a, b, c].map((value) => `<button type="button" data-number="${value}">${value} 万</button>`).join('')}
+          </div>
+          ${id === 'annualSurplus' ? '<button class="ghost-btn" type="button" data-expense-split>帮我拆开算</button>' : ''}
+          <label class="input-line">
+            <input id="numberInput" inputmode="decimal" placeholder="自己输入" />
+            <em>万元</em>
+            <button class="primary" type="button" data-submit-number>发送</button>
+          </label>
+        </section>
+      `;
+      screen.scrollTo({ top: screen.scrollHeight, behavior: 'smooth' });
+    }
+
+    function submitNumber(value) {
+      const wan = Math.max(0, Number(value) || 0);
+      const field = step;
+      const [, , , , , label] = numberConfig(field);
+      push('user', `${label}约 ${wan} 万`);
+      if (field === 'annualSurplus') {
+        plan.annualExpense = Math.max(0, plan.annualIncome - wan * 10000);
+      } else {
+        plan[field] = wan * 10000;
+      }
+
+      const next = {
+        liquidAssets: 'lockedAssets',
+        lockedAssets: 'liabilities',
+        liabilities: 'annualIncome',
+        annualIncome: 'annualSurplus',
+        annualExpense: 'required',
+      }[field];
+
+      if (field === 'annualSurplus') {
+        renderRequiredGoals();
+        return;
+      }
+      if (next === 'required') renderRequiredGoals();
+      else renderNumberStep(next);
+    }
+
+    function renderRequiredGoals() {
+      setStep('required');
+      if (!chat.at(-1)?.requiredPrompt) {
+        chat.push({
+          role: 'ai',
+          text: '先按年度可规划结余进入测算。现在看底线目标：未来哪些事情是家庭必须保障、不能轻易放弃的？可以一次选多个。',
+          requiredPrompt: true,
+        });
+      }
+      screen.innerHTML = `
+        ${renderChat()}
+        <section class="dock">
+          <strong>选择必须目标</strong>
+          <small>这些目标会优先进入底线保障层。</small>
+          <div class="choice-grid">
+            ${requiredGoals.map((goal) => `<button class="${selectedRequired.includes(goal.id) ? 'selected' : ''}" type="button" data-required="${goal.id}">${goal.name}</button>`).join('')}
+          </div>
+          <button class="primary" type="button" data-confirm-required>继续补全必要目标</button>
+        </section>
+      `;
+    }
+
+    function renderOptionalGoals() {
+      setStep('optional');
+      if (!chat.at(-1)?.optionalPrompt) {
+        chat.push({ role: 'ai', text: '底线目标记录好了。接下来看看想要但可以取舍的目标，可以多选，也可以跳过。', optionalPrompt: true });
+      }
+      screen.innerHTML = `
+        ${renderChat()}
+        <section class="dock">
+          <strong>选择想要目标</strong>
+          <small>资源不足时，想要目标会进入取舍逻辑。</small>
+          <div class="choice-grid">
+            ${optionalGoals.map((goal) => `<button class="${selectedOptional.includes(goal.id) ? 'selected' : ''}" type="button" data-optional="${goal.id}">${goal.name}</button>`).join('')}
+          </div>
+          <button class="primary" type="button" data-confirm-optional>${selectedOptional.length ? '继续补全想要目标' : '先跳过想要目标'}</button>
+        </section>
+      `;
+    }
+
+    function confirmRequired() {
+      const picked = requiredGoals.filter((goal) => selectedRequired.includes(goal.id));
+      const selected = picked.length ? picked : requiredGoals.slice(0, 2);
+      plan.goals = selected.map((goal) => ({ ...goal, id: `need-${goal.id}`, priority: 'need' }));
+      push('user', selected.map((goal) => goal.name).join('、'));
+      push('ai', '我会逐个补全金额和时间。这里先用默认金额与时间生成原型，下一步进入想要目标。');
+      renderOptionalGoals();
+    }
+
+    function confirmOptional() {
+      const picked = optionalGoals.filter((goal) => selectedOptional.includes(goal.id));
+      if (picked.length) {
+        plan.goals.push(...picked.map((goal) => ({ ...goal, id: `want-${goal.id}`, priority: 'want' })));
+        push('user', picked.map((goal) => goal.name).join('、'));
+      } else {
+        push('user', '想要目标先跳过');
+      }
+      push('ai', '我先按保守默认值计算：预期收益率 4%，通胀率和折现率 3%。先按这个算可以吗？');
+      renderAssumptions();
+    }
+
+    function renderAssumptions() {
+      setStep('optional');
+      screen.innerHTML = `
+        ${renderChat()}
+        <section class="dock">
+          <strong>默认假设</strong>
+          <small>收益率 4%，通胀率 3%，折现率 3%。</small>
+          <button class="primary" type="button" data-finish-interview>开始生成规划</button>
+        </section>
+      `;
+    }
+
+    function renderLoading(text = '正在把对话整理成你的规划页') {
+      setStep('loading');
+      screen.innerHTML = `
+        <section class="loading">
+          <div class="loading-card">
+            <h2>${text}</h2>
+            <p>AI 正在生成家庭财务地图、折现未来目标，并检查关键指标。</p>
+            <div class="loading-lines">
+              <span>生成家庭财务地图</span>
+              <span>折现未来目标</span>
+              <span>检查账面覆盖率与可调用覆盖率</span>
+              <span>判断哪些目标最挤压计划</span>
+            </div>
+          </div>
+        </section>
+      `;
+      window.setTimeout(() => renderApp('planning'), 850);
+    }
+
+    function renderApp(tab = activeTab) {
+      activeTab = tab;
+      setStep(tab);
+      const body = tab === 'asset' ? assetPage() : tab === 'goal' ? goalPage() : planningPage();
+      screen.innerHTML = `
+        ${body}
+        ${tab === 'planning' ? '<button class="ai-float" type="button" data-supplement><i class="radar"></i>AI 监测</button>' : ''}
+        <nav class="bottom-tabs">
+          <button class="${tab === 'asset' ? 'active' : ''}" type="button" data-tab="asset">资产</button>
+          <button class="${tab === 'planning' ? 'active' : ''}" type="button" data-tab="planning">规划</button>
+          <button class="${tab === 'goal' ? 'active' : ''}" type="button" data-tab="goal">目标</button>
+        </nav>
+      `;
+      screen.scrollTo({ top: 0, behavior: 'auto' });
+    }
+
+    function header(eyebrow, title, subtitle, icon) {
+      return `
+        <header class="screen-head">
+          <div>
+            <span>${eyebrow}</span>
+            <h2>${title}</h2>
+            <p>${subtitle}</p>
+          </div>
+          <div class="head-icon">${icon}</div>
+        </header>
+      `;
+    }
+
+    function planningPage() {
+      const m = metrics();
+      const verdict = m.callableCoverage >= 1 ? '继续攒可躺' : m.callableCoverage >= .55 ? '半躺可行' : '还不能躺';
+      return `
+        ${header('规划', '家庭财务地图', '把焦虑翻译成数字，再把数字翻译成行动', '算')}
+        <section class="panel ai-card">
+          <span class="pill">懂你的 AI</span>
+          <h3>${m.bookCoverage >= 1 && m.callableCoverage < .75 ? '你不是没资产，而是大部分资产不能直接替目标付款。' : '这套计划需要继续维护可调用资产。'}</h3>
+          <p>基于可动用资产、不易变现资产和目标现值生成判断。</p>
+          <div class="answer-strip">
+            <div><span>今天的答案</span><strong>${verdict}</strong></div>
+            <div><span>可调用覆盖</span><strong>${percent(m.callableCoverage)}</strong></div>
+            <div><span>账面覆盖</span><strong>${percent(m.bookCoverage)}</strong></div>
+          </div>
+          <div class="bar"><i style="width:${Math.min(100, Math.round(m.callableCoverage * 100))}%"></i></div>
+          <button class="secondary" type="button" data-jump="landing">重新问诊</button>
+        </section>
+
+        <div class="section-head"><div><strong>理性的我</strong><span>为什么这么判断</span></div></div>
+        <section class="ratio-row">
+          ${ratioCard('可调用覆盖率', percent(m.callableCoverage), '不卖长期资产，真正能调用的资源能覆盖目标的比例。', m.callableCoverage >= 1 ? '' : 'warning')}
+          ${ratioCard('账面覆盖率', percent(m.bookCoverage), '把不易变现资产也算上，账面资源能覆盖目标的比例。', m.bookCoverage >= 1 ? '' : 'warning')}
+          ${ratioCard('可动用资产占比', percent(m.liquidRatio), '家里资产里能较快拿出来用的钱。', m.liquidRatio < .1 ? 'danger' : 'warning')}
+          ${ratioCard('不易变现资产占比', percent(m.lockedRatio), '房子、车等不太能直接拿来支付目标的资产。', m.lockedRatio > .8 ? 'danger' : 'warning')}
+        </section>
+
+        <div class="section-head"><div><strong>行动的我</strong><span>本周可执行</span></div></div>
+        <section class="quick-grid" style="grid-template-columns:1fr;">
+          <div class="action-row"><b>1</b><span>把资产拆成“30 天内能动用”和“不能轻易动”两张清单。</span></div>
+          <div class="action-row"><b>2</b><span>重算最大目标，做一版“不动长期资产”的保守方案。</span></div>
+          <div class="action-row"><b>3</b><span>把收入拆成稳定、波动、一次性三类，只把稳定收入纳入长期规划。</span></div>
+        </section>
+
+        <div class="section-head"><div><strong>回到长期规划</strong><span>继续维护</span></div></div>
+        <section class="workspace-grid">
+          <button type="button" data-tab="asset"><span>资产</span><strong>${money(m.netWorth)}</strong><b>›</b></button>
+          <button type="button" data-tab="goal"><span>目标</span><strong>${money(m.goalPv)}</strong><b>›</b></button>
+          <button type="button" data-supplement><span>继续问 AI</span><strong>补充情况、测试决定、调整目标</strong><b>›</b></button>
+        </section>
+      `;
+    }
+
+    function ratioCard(name, value, text, status = '') {
+      const label = status === 'danger' ? '危险' : status === 'warning' ? '预警' : '达标';
+      return `<article class="ratio-card"><span class="pill ${status}">${label}</span><strong>${name}</strong><b>${value}</b><p>${text}</p></article>`;
+    }
+
+    function assetPage() {
+      const m = metrics();
+      return `
+        ${header('资产', '我的资产', '维护家庭现在拥有的资源和未来还能沉淀的现金流', '资')}
+        <section class="summary-grid">
+          <div class="metric"><span>可立即动用</span><strong>${money(plan.liquidAssets)}</strong></div>
+          <div class="metric"><span>不易变现</span><strong>${money(plan.lockedAssets)}</strong></div>
+          <div class="metric"><span>可动用占比</span><strong>${percent(m.liquidRatio)}</strong></div>
+        </section>
+        <section class="panel">
+          <h3>资产结构</h3>
+          ${field('可立即动用资产', 'liquidAssets', plan.liquidAssets / 10000, '万元')}
+          ${field('不易变现资产', 'lockedAssets', plan.lockedAssets / 10000, '万元')}
+          ${field('总负债', 'liabilities', plan.liabilities / 10000, '万元')}
+        </section>
+        <section class="panel">
+          <h3>年度现金流</h3>
+          ${field('年收入', 'annualIncome', plan.annualIncome / 10000, '万元')}
+          ${field('年支出', 'annualExpense', plan.annualExpense / 10000, '万元')}
+          <div class="metric"><span>年度结余</span><strong>${money(m.annualSurplus)}</strong></div>
+        </section>
+      `;
+    }
+
+    function field(label, key, value, unit) {
+      return `<label class="field"><span>${label}</span><div><input inputmode="decimal" value="${Number(value).toFixed(0)}" data-field="${key}" /><em>${unit}</em></div></label>`;
+    }
+
+    function goalPage() {
+      const m = metrics();
+      return `
+        ${header('目标', '我的目标', '把必须要和想要分开，资源不够时才知道谁先让路', '标')}
+        <section class="summary-grid" style="grid-template-columns: repeat(2, 1fr);">
+          <div class="metric"><span>目标总需求</span><strong>${money(m.goalPv)}</strong></div>
+          <div class="metric"><span>目标数量</span><strong>${plan.goals.length}个</strong></div>
+        </section>
+        <section class="panel">
+          <h3>添加目标</h3>
+          <div class="field-grid">
+            <label class="field"><span>目标名称</span><div><input id="newGoalName" placeholder="例如 买车" /></div></label>
+            <label class="field"><span>目标金额</span><div><input id="newGoalAmount" inputmode="decimal" placeholder="30" /><em>万元</em></div></label>
+            <button class="primary" type="button" data-add-goal>添加目标</button>
+          </div>
+        </section>
+        <section class="quick-grid" style="grid-template-columns:1fr;">
+          ${plan.goals.map((goal) => `
+            <article class="goal-card">
+              <strong>${goal.name}</strong>
+              <div><span>${goal.priority === 'need' ? '必须要' : '想要'} · ${goal.kind === 'recurring' ? '持续性' : '一次性'}</span><b>${goal.kind === 'recurring' ? `${money(goal.amount)} / ${goal.frequency === 'monthly' ? '月' : '年'}` : money(goal.amount)}</b></div>
+            </article>
+          `).join('')}
+        </section>
+      `;
+    }
+
+    function renderSupplement() {
+      setStep('supplement');
+      chat = [
+        { role: 'user', text: '我想让 AI 继续补充判断。' },
+        { role: 'ai', text: '我会基于你现在的家庭财务地图继续监测。你不用重填全部信息，只补充发生变化或刚想到的部分。' },
+      ];
+      screen.innerHTML = `
+        ${renderChat()}
+        <section class="dock">
+          <strong>这次想补充什么？</strong>
+          <small>AI 会只重算受影响的部分，然后刷新你的规划页。</small>
+          <div class="choice-grid">
+            <button type="button" data-supp-mode="assets">更新资产结构</button>
+            <button type="button" data-supp-mode="goal">新增一个目标</button>
+          </div>
+          <button class="secondary" type="button" data-tab="planning">回到规划页</button>
+        </section>
+      `;
+    }
+
+    function renderSupplementAssets() {
+      screen.innerHTML = `
+        ${renderChat()}
+        <form class="dock" data-supp-assets>
+          <strong>补充资产结构</strong>
+          <small>按万元填。固定资产进入账面资源，但不会被当成可以随时调用的钱。</small>
+          ${field('可立即动用资产', 'suppLiquid', plan.liquidAssets / 10000, '万元')}
+          ${field('不易变现资产', 'suppLocked', plan.lockedAssets / 10000, '万元')}
+          ${field('总负债', 'suppDebt', plan.liabilities / 10000, '万元')}
+          <button class="primary" type="submit">重新生成规划页</button>
+        </form>
+      `;
+    }
+
+    function renderSupplementGoal() {
+      screen.innerHTML = `
+        ${renderChat()}
+        <form class="dock" data-supp-goal>
+          <strong>补充一个新目标</strong>
+          <small>先让 AI 知道它是必须要还是想要，再判断会不会挤压原计划。</small>
+          <label class="field"><span>目标名称</span><div><input name="name" placeholder="例如 换车 / 提前退休" /></div></label>
+          <label class="field"><span>总金额</span><div><input name="amount" inputmode="decimal" placeholder="30" /><em>万元</em></div></label>
+          <button class="primary" type="submit">重新生成规划页</button>
+        </form>
+      `;
+    }
+
+    function quickFinish() {
+      plan = structuredClone(defaultPlan);
+      selectedRequired = ['basic-retirement', 'education'];
+      selectedOptional = ['bigger-home'];
+      renderLoading();
+    }
+
+    function jumpToStage(id) {
+      if (id === 'landing') {
+        renderLanding();
+        return;
+      }
+      if (id === 'chatStart') {
+        startInterview();
+        return;
+      }
+      if (id === 'assets') {
+        chat = [
+          { role: 'user', text: '我想生成一份家庭财务规划。' },
+          { role: 'ai', text: '我先帮你搭一张家庭财务地图。你不用一次填完，我会一个问题一个问题问，只收集会影响人生计划的数字。' },
+        ];
+        renderNumberStep('liquidAssets');
+        return;
+      }
+      if (id === 'required') {
+        chat = [
+          { role: 'user', text: '可立即动用 22 万，不易变现 98 万，负债 35 万，年收入 42 万，年度结余 18 万。' },
+        ];
+        renderRequiredGoals();
+        return;
+      }
+      if (id === 'optional') {
+        selectedRequired = ['basic-retirement', 'education'];
+        plan.goals = requiredGoals.slice(0, 2).map((goal) => ({ ...goal, id: `need-${goal.id}`, priority: 'need' }));
+        chat = [
+          { role: 'user', text: '基本退休生活、孩子教育' },
+          { role: 'ai', text: '已记录必要目标。' },
+        ];
+        renderOptionalGoals();
+        return;
+      }
+      if (id === 'loading') {
+        quickFinish();
+        return;
+      }
+      if (id === 'app') {
+        renderApp('planning');
+        return;
+      }
+      if (id === 'supplement') {
+        renderSupplement();
+      }
+    }
+
+    document.addEventListener('click', (event) => {
+      const target = event.target.closest('button');
+      if (!target) return;
+
+      if (target.dataset.start !== undefined) startInterview();
+      if (target.dataset.number) submitNumber(target.dataset.number);
+      if (target.dataset.submitNumber !== undefined) submitNumber(document.querySelector('#numberInput')?.value || 0);
+      if (target.dataset.expenseSplit !== undefined) {
+        push('user', '帮我拆开算');
+        renderNumberStep('annualExpense');
+      }
+      if (target.dataset.required) {
+        const id = target.dataset.required;
+        selectedRequired = selectedRequired.includes(id) ? selectedRequired.filter((item) => item !== id) : [...selectedRequired, id];
+        renderRequiredGoals();
+      }
+      if (target.dataset.optional) {
+        const id = target.dataset.optional;
+        selectedOptional = selectedOptional.includes(id) ? selectedOptional.filter((item) => item !== id) : [...selectedOptional, id];
+        renderOptionalGoals();
+      }
+      if (target.dataset.confirmRequired !== undefined) confirmRequired();
+      if (target.dataset.confirmOptional !== undefined) confirmOptional();
+      if (target.dataset.finishInterview !== undefined) renderLoading();
+      if (target.dataset.tab) renderApp(target.dataset.tab);
+      if (target.dataset.supplement !== undefined) renderSupplement();
+      if (target.dataset.suppMode === 'assets') renderSupplementAssets();
+      if (target.dataset.suppMode === 'goal') renderSupplementGoal();
+      if (target.dataset.addGoal !== undefined) {
+        const name = document.querySelector('#newGoalName')?.value || '新的目标';
+        const amount = Number(document.querySelector('#newGoalAmount')?.value || 30) * 10000;
+        plan.goals.push({ id: `manual-${Date.now()}`, name, priority: 'want', kind: 'oneTime', amount, year: 3 });
+        renderApp('goal');
+      }
+      if (target.dataset.jump) {
+        jumpToStage(target.dataset.jump);
+      }
+      if (target.dataset.action === 'autoflow') quickFinish();
+    });
+
+    document.addEventListener('change', (event) => {
+      const input = event.target.closest('input[data-field]');
+      if (!input) return;
+      const key = input.dataset.field;
+      const value = Math.max(0, Number(input.value) || 0) * 10000;
+      if (key === 'liquidAssets') plan.liquidAssets = value;
+      if (key === 'lockedAssets') plan.lockedAssets = value;
+      if (key === 'liabilities') plan.liabilities = value;
+      if (key === 'annualIncome') plan.annualIncome = value;
+      if (key === 'annualExpense') plan.annualExpense = value;
+      renderApp(activeTab);
+    });
+
+    document.addEventListener('submit', (event) => {
+      if (event.target.matches('[data-supp-assets]')) {
+        event.preventDefault();
+        plan.liquidAssets = Number(event.target.querySelector('[data-field="suppLiquid"]').value || 0) * 10000;
+        plan.lockedAssets = Number(event.target.querySelector('[data-field="suppLocked"]').value || 0) * 10000;
+        plan.liabilities = Number(event.target.querySelector('[data-field="suppDebt"]').value || 0) * 10000;
+        renderLoading('正在重新生成规划页');
+      }
+
+      if (event.target.matches('[data-supp-goal]')) {
+        event.preventDefault();
+        const data = new FormData(event.target);
+        plan.goals.push({
+          id: `supp-${Date.now()}`,
+          name: data.get('name') || '新的目标',
+          priority: 'want',
+          kind: 'oneTime',
+          amount: Number(data.get('amount') || 30) * 10000,
+          year: 3,
+        });
+        renderLoading('正在重新生成规划页');
+      }
+    });
+
+    renderLanding();
+    renderStages();
+  </script>
+</body>
+</html>

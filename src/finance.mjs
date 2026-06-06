@@ -208,9 +208,109 @@ export function ratioStatus(value, goodTest, warningTest) {
   return 'danger';
 }
 
+function buildJudgement(plan, metrics, aiReport) {
+  const monthlyIncome = plan.annualIncome / 12;
+  const monthlyExpense = plan.annualExpense / 12;
+  const monthlySurplus = Math.max(0, metrics.annualSurplus) / 12;
+  const maxGoalName = metrics.maxGoal?.name || '最大目标';
+  const pressure = aiReport.risks[0];
+
+  let verdict = '先把目标写清楚，再判断能不能躺。';
+  let reason = '现在目标还不完整，系统只能看资产和现金流，不能判断家庭长期计划是否成立。';
+
+  if (metrics.totalTargetPv > 0 && metrics.callableCoverage >= 1) {
+    verdict = '可以继续朝“半躺”推进，但仍要复核可调用资产。';
+    reason = `可调用资源已经覆盖目标需求的 ${percent(metrics.callableCoverage)}，现在最重要的是别让资产流动性和目标节奏失真。`;
+  } else if (metrics.totalTargetPv > 0 && metrics.callableCoverage >= 0.7) {
+    verdict = '可以继续朝“半躺”推进，但不建议现在直接停下长期收入。';
+    reason = `方向没错，但可调用覆盖只有 ${percent(metrics.callableCoverage)}，计划还需要未来收入和目标调整一起托住。`;
+  } else if (metrics.totalTargetPv > 0) {
+    verdict = '现在还不能直接躺，先处理目标缺口和资产流动性。';
+    reason = `可调用覆盖只有 ${percent(metrics.callableCoverage)}，如果立刻停下长期收入，必要目标会先被挤压。`;
+  }
+
+  const longTermAdvice =
+    metrics.totalTargetPv <= 0
+      ? {
+          target: '先补齐目标',
+          recommendation: '先添加 1 个必须目标和 1 个想要目标，再重新生成规划。',
+          impact: '没有目标时，系统只能判断资源，不能判断你真正能不能躺。',
+        }
+      : metrics.callableCoverage >= 1
+        ? {
+            target: maxGoalName,
+            recommendation: `保留「${maxGoalName}」当前版本，但每月复核一次可调用资产。`,
+            impact: '覆盖率已经达标，重点不是砍目标，而是确认账面资源真的能在需要时调用。',
+          }
+        : {
+            target: maxGoalName,
+            recommendation: `先给「${maxGoalName}」做一版“延后 3 年 + 降低 20% 预算”的保守方案。`,
+            impact: '先动最大压力目标，通常比同时削弱教育、养老和退休目标更稳。',
+          };
+
+  return {
+    leadIn: '你问的不是账上有多少钱，而是这个家庭能不能把工作强度慢慢降下来。',
+    verdict,
+    reason,
+    keyMetrics: [
+      {
+        label: '可调用覆盖',
+        value: percent(metrics.callableCoverage),
+        note: '不动长期资产时，真正能支撑目标的比例。',
+      },
+      {
+        label: '账面覆盖',
+        value: percent(metrics.bookCoverage),
+        note: '把不易变现资产也算进去后的比例。',
+      },
+      {
+        label: '目标缺口',
+        value: metrics.gap > 0 ? money(metrics.gap) : '无缺口',
+        note: metrics.gap > 0 ? '当前版本还需要补足的现值。' : '当前资源已覆盖目标现值。',
+      },
+      {
+        label: '年度结余率',
+        value: percent(metrics.surplusRate),
+        note: '未来目标能否持续推进的燃料。',
+      },
+    ],
+    pressure: {
+      title: pressure.title,
+      level: pressure.level,
+      status: pressure.status,
+      evidence: pressure.evidence,
+      impact: pressure.impact,
+      action: pressure.action,
+    },
+    longTermAdvice,
+    shortTermPlan: [
+      {
+        label: '月收入目标',
+        value: `不低于 ${money(monthlyIncome)}`,
+        note: '先守住长期规划的收入前提。',
+      },
+      {
+        label: '月支出上限',
+        value: `控制在 ${money(monthlyExpense)} 以内`,
+        note: '支出上限决定结余能不能稳定进入长期目标。',
+      },
+      {
+        label: '月结余目标',
+        value: `至少 ${money(monthlySurplus)} 进入长期规划`,
+        note: '结余不足时，先调整短期执行数字，再重算长期目标。',
+      },
+      {
+        label: '复盘节奏',
+        value: '每周一次，每月底复盘',
+        note: '周复盘看偏差，月复盘看长期进度是否变形。',
+      },
+    ],
+  };
+}
+
 export function buildAiReport(plan, metrics) {
   if (metrics.totalTargetPv <= 0) {
-    return {
+    const emptyReport = {
       headline: '目标还没定义，AI 只能判断资源，不能判断人生计划。',
       analyzed: ['0 个目标', '8 个比率待计算', '资产口径待补充'],
       risks: [
@@ -233,6 +333,11 @@ export function buildAiReport(plan, metrics) {
       ],
       ratios: [],
       actions: ['先添加 1 个必要目标和 1 个想要目标。', '把每个目标拆成金额、发生年份、一次性或持续性。', '补充可立即动用资产和不易变现资产。'],
+    };
+
+    return {
+      ...emptyReport,
+      judgement: buildJudgement(plan, metrics, emptyReport),
     };
   }
 
@@ -396,7 +501,7 @@ export function buildAiReport(plan, metrics) {
     headline = '你的资源不仅账面够，真正能调用的钱也有余量。';
   }
 
-  return {
+  const report = {
     headline,
     analyzed: [`${metrics.goals.length} 个目标`, `${ratios.length} 个比率`, '2 套资源口径'],
     risks,
@@ -406,5 +511,10 @@ export function buildAiReport(plan, metrics) {
       `本周先重算「${metrics.maxGoal?.name || '最大目标'}」：做一版“不动长期资产”的保守方案。`,
       '把年收入拆成稳定收入、波动收入、一次性收入三类，长期规划优先只纳入稳定收入。',
     ],
+  };
+
+  return {
+    ...report,
+    judgement: buildJudgement(plan, metrics, report),
   };
 }

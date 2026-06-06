@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Simple family asset home icon">
+  <defs>
+    <linearGradient id="bg" x1="72" x2="440" y1="58" y2="454" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5a2d20" />
+      <stop offset="1" stop-color="#1d100c" />
+    </linearGradient>
+    <linearGradient id="gold" x1="138" x2="374" y1="142" y2="372" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe0a8" />
+      <stop offset="1" stop-color="#b87947" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="104" fill="#f8f0e5" />
+  <rect x="48" y="48" width="416" height="416" rx="88" fill="url(#bg)" />
+  <path d="M154 250 256 166l102 84" fill="none" stroke="url(#gold)" stroke-linecap="round" stroke-linejoin="round" stroke-width="38" />
+  <path d="M188 252v104h136V252" fill="none" stroke="#fff2dc" stroke-linecap="round" stroke-linejoin="round" stroke-width="34" />
+  <path d="M218 324h76" fill="none" stroke="url(#gold)" stroke-linecap="round" stroke-width="28" />
+</svg>
