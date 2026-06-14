@@ -1,7 +1,8 @@
 import { money, percent, toNumber } from './finance.mjs';
 
 export const MODEL_SETTINGS_STORAGE_KEY = 'neng_tang_model_settings_v1';
-export const MANAGED_AI_ENDPOINT = '/api/ai-chat';
+export const MANAGED_AI_ENDPOINT =
+  'https://nengtang-alpha-d8g6yxni2141b54ca-1440747224.ap-shanghai.app.tcloudbase.com/api/ai-chat';
 export const MANAGED_MODEL_LABEL = 'DeepSeek / deepseek-chat';
 
 export const MODEL_PROVIDERS = {
@@ -106,6 +107,107 @@ function compactPlanContext(plan, metrics) {
   ].join('\n');
 }
 
+function presentValueSeries(baseValue, years, growthRate, discountRate) {
+  const safeYears = Math.max(0, Math.floor(toNumber(years)));
+  const growth = toNumber(growthRate) / 100;
+  const discount = toNumber(discountRate) / 100;
+
+  return Array.from({ length: safeYears }, (_, index) => {
+    const year = index + 1;
+    const value = toNumber(baseValue) * Math.pow(1 + growth, year - 1);
+    return value / Math.pow(1 + discount, year);
+  }).reduce((sum, value) => sum + value, 0);
+}
+
+function normalizeGoalForAnalysis(goal) {
+  if (goal.kind === 'recurring') {
+    return {
+      type: 'recurring',
+      name: goal.name || '持续目标',
+      amount: toNumber(goal.amount),
+      frequency: goal.frequency || 'annual',
+      startYear: toNumber(goal.startYear),
+      endYear: toNumber(goal.endYear),
+      priority: goal.priority === 'need' ? 'need' : 'want',
+      presentValue: toNumber(goal.presentValue),
+    };
+  }
+
+  return {
+    type: 'oneTime',
+    name: goal.name || '一次性目标',
+    amount: toNumber(goal.amount),
+    targetYear: toNumber(goal.year),
+    priority: goal.priority === 'need' ? 'need' : 'want',
+    presentValue: toNumber(goal.presentValue),
+  };
+}
+
+export function buildAnalysisInput(plan, metrics) {
+  const futureIncomePv = presentValueSeries(
+    plan.annualIncome,
+    plan.workYears,
+    plan.incomeGrowthRate,
+    plan.discountRate,
+  );
+  const futureExpensePv = presentValueSeries(
+    plan.annualExpense,
+    plan.workYears,
+    plan.expenseGrowthRate,
+    plan.discountRate,
+  );
+  const futureSurplusPv = futureIncomePv - futureExpensePv;
+  const reconstructedAvailableAssetsPv = toNumber(metrics.liquidAssets) + futureSurplusPv;
+  const debtAdjustedAvailableAssetsPv = reconstructedAvailableAssetsPv - toNumber(plan.liabilities);
+
+  return {
+    profile: {
+      planningScope: plan.planningScope || 'unknown',
+      familyResponsibilities: Array.isArray(plan.familyResponsibilities) ? plan.familyResponsibilities : [],
+      cityTier: plan.cityTier || 'unknown',
+    },
+    assets: {
+      liquidAssets: toNumber(metrics.liquidAssets),
+      fixedAssets: toNumber(metrics.lockedAssets),
+      totalAssets: toNumber(metrics.assets),
+    },
+    liabilities: {
+      totalLiabilities: toNumber(plan.liabilities),
+    },
+    cashflow: {
+      annualIncome: toNumber(plan.annualIncome),
+      annualExpense: toNumber(plan.annualExpense),
+      annualSurplus: toNumber(metrics.annualSurplus),
+      expectedWorkYears: toNumber(plan.workYears),
+    },
+    assumptions: {
+      discountRate: toNumber(plan.discountRate) / 100,
+      incomeGrowthRate: toNumber(plan.incomeGrowthRate) / 100,
+      expenseGrowthRate: toNumber(plan.expenseGrowthRate) / 100,
+      inflationRate: toNumber(plan.inflationRate) / 100,
+      returnRate: toNumber(plan.returnRate) / 100,
+    },
+    goals: (metrics.goals || []).map(normalizeGoalForAnalysis),
+    computed: {
+      netWorth: toNumber(metrics.netWorth),
+      annualSurplus: toNumber(metrics.annualSurplus),
+      liquidAssetRatio: toNumber(metrics.liquidAssetRatio),
+      debtRatio: metrics.assets > 0 ? toNumber(plan.liabilities) / toNumber(metrics.assets) : 0,
+      annualSurplusRate: toNumber(metrics.surplusRate),
+      futureIncomePv,
+      futureExpensePv,
+      futureSurplusPv,
+      goalNeedPv: toNumber(metrics.needTargetPv),
+      goalWantPv: toNumber(metrics.wantTargetPv),
+      totalGoalPv: toNumber(metrics.totalTargetPv),
+      planningPoolPv: reconstructedAvailableAssetsPv,
+      reconstructedAvailableAssetsPv,
+      debtAdjustedAvailableAssetsPv,
+      gapOrSurplusPv: debtAdjustedAvailableAssetsPv - toNumber(metrics.totalTargetPv),
+    },
+  };
+}
+
 export function buildModelMessages({ question, plan, metrics, recentMessages = [] }) {
   const recent = recentMessages
     .filter((message) => message.role === 'user' || message.role === 'ai')
@@ -117,7 +219,31 @@ export function buildModelMessages({ question, plan, metrics, recentMessages = [
     {
       role: 'system',
       content:
-        '你是「能躺了吗」里的家庭财务规划 AI。请用中文回答，基于用户提供的当前设备规划数据做解释和下一步建议。不要编造投资收益，不要给具体证券买卖建议，不要要求用户上传身份证、银行卡或完整隐私信息。回答控制在 500 字以内，结论清楚，必要时提醒用户复核数字。',
+        [
+          '你是「能躺了吗」里的家庭财务规划 AI，负责回答用户在结果页后的继续追问。',
+          '请基于用户当前设备里的家庭财务地图回答，不要编造投资收益，不要给具体证券买卖建议，不要要求用户上传身份证、银行卡或完整隐私信息。',
+          '',
+          '输出要求：只返回合法 JSON，不要 Markdown，不要代码块，不要 **加粗**，不要编号长列表。',
+          'JSON 结构必须是：',
+          '{',
+          '  "headline": "一句话回答用户这次问题，18 个中文以内",',
+          '  "summary": "用 1-2 句话解释判断，必须引用关键数字，80 个中文以内",',
+          '  "cards": [',
+          '    { "title": "短标题", "body": "具体判断或建议，60 个中文以内" }',
+          '  ],',
+          '  "nextQuestions": ["用户可能会继续这样问，必须是第一人称用户口吻"]',
+          '}',
+          '',
+          '字段约束：',
+          '- cards 最多 3 张。',
+          '- nextQuestions 最多 3 个。',
+          '- nextQuestions 必须像用户自己在提问，优先使用“我/我的/如果我/我应该/我能不能”，不要写成“你是否/你希望/请补充/是否考虑”等系统询问用户的口吻。',
+          '- 每张卡片只讲一个点。',
+          '- 如果用户问“怎么做”，卡片要落到月度或周度动作。',
+          '- 如果用户问“能不能覆盖”，卡片要说明差额、余量或优先级。',
+          '- 如果数据不足，就说明还缺哪一个关键数字，不要硬算。',
+          '- 用普通人能听懂的话，不要使用“净现值”“折现法”，统一说“未来收入的今天价值”。',
+        ].join('\n'),
     },
     {
       role: 'user',
@@ -131,6 +257,29 @@ export function buildModelMessages({ question, plan, metrics, recentMessages = [
         .join('\n\n'),
     },
   ];
+}
+
+export function parseAnalysisContent(content) {
+  const text = String(content || '').trim();
+  if (!text) return null;
+
+  const jsonFence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = jsonFence ? jsonFence[1].trim() : text;
+
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(candidate.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
 }
 
 export async function callConfiguredModel(settings, { question, plan, metrics, recentMessages = [] }) {
@@ -178,6 +327,45 @@ export async function callConfiguredModel(settings, { question, plan, metrics, r
     usage: data?.usage || null,
     provider: config.name,
     model: config.model,
+  };
+}
+
+export async function callManagedAnalysis({ plan, metrics }) {
+  const response = await fetch(MANAGED_AI_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      type: 'analysis',
+      analysisInput: buildAnalysisInput(plan, metrics),
+    }),
+  });
+
+  const rawText = await response.text();
+  let data = null;
+  try {
+    data = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    const message = data?.message || rawText || `${response.status} ${response.statusText}`;
+    throw new Error(`AI 分析调用失败：${message}`);
+  }
+
+  const analysis = data?.analysis || parseAnalysisContent(data?.content);
+  if (!analysis || typeof analysis !== 'object') {
+    throw new Error('AI 分析没有返回可展示的结构化内容。');
+  }
+
+  return {
+    analysis,
+    rawContent: data?.content || '',
+    usage: data?.usage || null,
+    provider: 'DeepSeek',
+    model: 'deepseek-chat',
   };
 }
 

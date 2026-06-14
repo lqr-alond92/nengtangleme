@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>能躺了吗 - 合并问诊 Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3eee5;
+      --paper: #fffdf8;
+      --surface: #f7f0e5;
+      --ink: #17221c;
+      --muted: #6a746d;
+      --line: #e3d8c8;
+      --green: #2f8058;
+      --green-soft: #e8f3ea;
+      --brown: #6b3424;
+      --shadow: 0 24px 70px rgba(42, 33, 21, 0.14);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: linear-gradient(145deg, #fbf7ee 0%, #efe6da 52%, #f8f5ee 100%);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .stage {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 28px 14px;
+    }
+
+    .phone {
+      position: relative;
+      width: min(430px, 100%);
+      height: min(920px, calc(100vh - 56px));
+      min-height: 760px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(79, 56, 39, 0.18);
+      border-radius: 30px;
+      background: var(--bg);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 253, 248, 0.94);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      font-size: 17px;
+      font-weight: 950;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--green), #8aae64);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 950;
+    }
+
+    .menu-button {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 950;
+    }
+
+    .menu {
+      position: absolute;
+      right: 14px;
+      top: 62px;
+      z-index: 8;
+      display: none;
+      min-width: 140px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 253, 248, 0.98);
+      box-shadow: 0 18px 48px rgba(48, 37, 25, 0.18);
+    }
+
+    .menu.open {
+      display: grid;
+      gap: 4px;
+    }
+
+    .menu button {
+      border: 0;
+      border-radius: 12px;
+      padding: 11px 12px;
+      background: transparent;
+      color: var(--ink);
+      text-align: left;
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .chat {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      padding: 18px 16px;
+      scroll-behavior: smooth;
+    }
+
+    .bubble {
+      width: fit-content;
+      max-width: 88%;
+      padding: 14px 16px;
+      border-radius: 21px;
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .bubble.ai {
+      justify-self: start;
+      border: 1px solid var(--line);
+      border-bottom-left-radius: 8px;
+      background: var(--paper);
+    }
+
+    .bubble.user {
+      justify-self: end;
+      border-bottom-right-radius: 8px;
+      background: linear-gradient(135deg, var(--brown), #854831);
+      color: #fff;
+    }
+
+    .dock {
+      position: sticky;
+      bottom: 0;
+      z-index: 5;
+      display: grid;
+      gap: 12px;
+      max-height: 56vh;
+      overflow-y: auto;
+      padding: 15px 16px 16px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 253, 248, 0.98);
+      box-shadow: 0 -18px 44px rgba(56, 41, 25, 0.10);
+    }
+
+    .dock-title {
+      display: grid;
+      gap: 4px;
+    }
+
+    .dock-title strong {
+      font-size: 20px;
+      line-height: 1.3;
+    }
+
+    .dock-title span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .chip-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      border: 1px solid #cfe1d3;
+      border-radius: 999px;
+      padding: 11px 14px;
+      background: #f7fbf6;
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .chip.active {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .field-grid.one {
+      grid-template-columns: 1fr;
+    }
+
+    .scope-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .scope-card {
+      display: grid;
+      min-height: 58px;
+      place-items: center;
+      border: 1px solid #cfe1d3;
+      border-radius: 18px;
+      padding: 12px;
+      background: #f7fbf6;
+      color: var(--green);
+      text-align: center;
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 950;
+    }
+
+    .scope-card.active {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+
+    .linked-panel {
+      position: relative;
+      display: grid;
+      gap: 10px;
+      margin-top: 8px;
+      padding: 15px 12px 12px;
+      border: 1px solid #cfe1d3;
+      border-radius: 18px;
+      background: #f7fbf6;
+    }
+
+    .linked-panel::before {
+      content: "";
+      position: absolute;
+      top: -10px;
+      width: 18px;
+      height: 18px;
+      border-top: 1px solid #cfe1d3;
+      border-left: 1px solid #cfe1d3;
+      background: #f7fbf6;
+      transform: rotate(45deg);
+    }
+
+    .linked-panel.from-single::before {
+      left: calc(25% - 9px);
+    }
+
+    .linked-panel.from-partner::before {
+      left: calc(75% - 9px);
+    }
+
+    .linked-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 950;
+    }
+
+    .dimension-label {
+      color: #53645b;
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .dimension-card,
+    .asset-card {
+      display: grid;
+      gap: 9px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fbf8f0;
+    }
+
+    .money-row,
+    .time-row {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .money-row {
+      grid-template-columns: 1.15fr 1fr;
+    }
+
+    .necessity-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .necessity-row .chip {
+      text-align: center;
+    }
+
+    .asset-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .asset-card-head strong {
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-wrap input {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 48px 10px 12px;
+      background: var(--paper);
+      color: var(--ink);
+      outline: none;
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .input-wrap input::placeholder {
+      color: #a8afa9;
+      font-weight: 750;
+    }
+
+    .input-wrap input:focus {
+      border-color: rgba(47, 128, 88, 0.62);
+      box-shadow: 0 0 0 3px rgba(47, 128, 88, 0.12);
+    }
+
+    .input-wrap input:disabled {
+      background: #eee7dc;
+      color: #8d968f;
+    }
+
+    .input-wrap.no-unit input {
+      padding-right: 12px;
+    }
+
+    .unit {
+      position: absolute;
+      top: 50%;
+      right: 12px;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+      pointer-events: none;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      padding: 3px;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper);
+    }
+
+    .segmented button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 11px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .segmented button.active {
+      background: var(--green-soft);
+      color: var(--green);
+      box-shadow: none;
+    }
+
+    .dock-loading {
+      display: flex;
+      min-height: 74px;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--surface);
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .loading-dots {
+      display: inline-flex;
+      gap: 4px;
+    }
+
+    .loading-dots i {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--green);
+      opacity: 0.35;
+      animation: loadingPulse 0.9s ease-in-out infinite;
+    }
+
+    .loading-dots i:nth-child(2) {
+      animation-delay: 0.12s;
+    }
+
+    .loading-dots i:nth-child(3) {
+      animation-delay: 0.24s;
+    }
+
+    @keyframes loadingPulse {
+      0%, 100% {
+        opacity: 0.35;
+        transform: translateY(0);
+      }
+      50% {
+        opacity: 1;
+        transform: translateY(-2px);
+      }
+    }
+
+    .summary-line {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .primary {
+      border: 0;
+      border-radius: 999px;
+      padding: 13px 16px;
+      background: var(--green);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 950;
+      box-shadow: 0 12px 24px rgba(47, 128, 88, 0.22);
+    }
+
+    .primary:disabled {
+      opacity: 0.42;
+      box-shadow: none;
+    }
+
+    .secondary {
+      border: 1px solid #cfe1d3;
+      border-radius: 999px;
+      padding: 13px 16px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .assumption-card {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .assumption-card div {
+      display: grid;
+      gap: 5px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+
+    .assumption-card span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .assumption-card strong {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 12;
+      display: grid;
+      place-items: end center;
+      padding: 18px 16px;
+      background: rgba(23, 34, 28, 0.24);
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-backdrop[hidden] {
+      display: none;
+    }
+
+    .goal-dialog {
+      display: grid;
+      width: 100%;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--paper);
+      box-shadow: 0 22px 58px rgba(35, 27, 19, 0.22);
+    }
+
+    .goal-dialog h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.3;
+    }
+
+    .goal-dialog p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 750;
+    }
+
+    @media (max-width: 520px) {
+      .stage {
+        padding: 0;
+      }
+
+      .phone {
+        width: 100%;
+        height: 100vh;
+        min-height: 100vh;
+        border: 0;
+        border-radius: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <article class="phone">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">规</span>
+          <span>能躺了吗？</span>
+        </div>
+        <button class="menu-button" type="button" aria-label="打开菜单" id="menuButton">...</button>
+        <div class="menu" id="menu">
+          <button type="button">资产</button>
+          <button type="button">目标</button>
+          <button type="button">计划</button>
+        </div>
+      </header>
+
+      <section class="chat" id="chat"></section>
+      <section class="dock" id="dock" aria-label="底部答题栏"></section>
+      <div class="modal-backdrop" id="customGoalModal" hidden></div>
+    </article>
+  </main>
+
+  <script>
+    const chat = document.querySelector('#chat');
+    const dock = document.querySelector('#dock');
+    const customGoalModal = document.querySelector('#customGoalModal');
+    const menuButton = document.querySelector('#menuButton');
+    const menu = document.querySelector('#menu');
+
+    const state = {
+      step: 'profile',
+      profile: '',
+      responsibilities: [],
+      selectedGoals: [],
+      goalIndex: 0,
+      assets: {
+        liquidAssets: '',
+        fixedAssets: '',
+        totalDebt: '',
+      },
+      cashflow: {
+        annualIncome: '',
+        annualExpense: '',
+      },
+      assumptions: {
+        returnRate: '4',
+        discountRate: '3',
+      },
+      goals: {},
+      customGoalDraft: '',
+    };
+
+    const goalOptions = ['换房', '子女教育', '养老', '消费升级', '创业/转型'];
+    const transitionDelay = 620;
+
+    function addBubble(role, text) {
+      const bubble = document.createElement('div');
+      bubble.className = `bubble ${role}`;
+      bubble.textContent = text;
+      chat.appendChild(bubble);
+      requestAnimationFrame(() => {
+        chat.scrollTop = chat.scrollHeight;
+      });
+    }
+
+    function ask(text, step) {
+      state.step = step;
+      addBubble('ai', text);
+      renderDock();
+    }
+
+    function chip(label, active, attrs = '') {
+      return `<button class="chip${active ? ' active' : ''}" type="button" ${attrs}>${label}</button>`;
+    }
+
+    function field(name, label, placeholder, value, unit, attrs = '') {
+      return `
+        <div class="field">
+          <label for="${name}">${label}</label>
+          <div class="input-wrap">
+            <input id="${name}" value="${escapeHtml(value)}" placeholder="${placeholder}" inputmode="decimal" ${attrs} />
+            <span class="unit">${unit}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function textField(name, label, placeholder, value, attrs = '') {
+      return `
+        <div class="field">
+          <label for="${name}">${label}</label>
+          <div class="input-wrap no-unit">
+            <input id="${name}" value="${escapeHtml(value)}" placeholder="${placeholder}" ${attrs} />
+          </div>
+        </div>
+      `;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+    }
+
+    function title(label, helper = '') {
+      return `
+        <div class="dock-title">
+          <strong>${label}</strong>
+          ${helper ? `<span>${helper}</span>` : ''}
+        </div>
+      `;
+    }
+
+    function showDockLoading(text = '正在整理下一步') {
+      dock.innerHTML = `
+        <div class="dock-loading">
+          <span>${text}</span>
+          <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+      `;
+    }
+
+    function renderCustomGoalModal(open) {
+      if (!open) {
+        customGoalModal.hidden = true;
+        customGoalModal.innerHTML = '';
+        return;
+      }
+
+      customGoalModal.hidden = false;
+      customGoalModal.innerHTML = `
+        <div class="goal-dialog" role="dialog" aria-modal="true" aria-labelledby="customGoalTitle">
+          <h2 id="customGoalTitle">这个目标具体是什么？</h2>
+          <p>可以添加多个自定义目标，每个目标后面都会单独补充金额和时间。</p>
+          ${textField('customGoalName', '目标名称', '例如：父母医疗、进修学习、创业启动金', state.customGoalDraft, 'data-custom-goal-name')}
+          <div class="button-row">
+            <button class="secondary" type="button" data-cancel-custom-goal>取消</button>
+            <button class="primary" type="button" data-save-custom-goal ${state.customGoalDraft.trim() ? '' : 'disabled'}>添加</button>
+          </div>
+        </div>
+      `;
+
+      requestAnimationFrame(() => {
+        customGoalModal.querySelector('[data-custom-goal-name]')?.focus();
+      });
+    }
+
+    function renderDock() {
+      if (state.step === 'profile') {
+        const responsibilityOptions = state.profile === 'single'
+          ? ['赡养老人', '其他责任', '暂无']
+          : state.profile === 'partner'
+            ? ['有孩子', '教育支出', '赡养老人', '其他责任', '暂无']
+            : [];
+        dock.innerHTML = `
+          ${title('规划对象', '先选择规划对象，再补充对应家庭责任。')}
+          <div class="scope-grid">
+            <button class="scope-card${state.profile === 'single' ? ' active' : ''}" type="button" data-profile="single">单身为自己规划</button>
+            <button class="scope-card${state.profile === 'partner' ? ' active' : ''}" type="button" data-profile="partner">和伴侣 / 夫妻共同规划</button>
+          </div>
+          ${responsibilityOptions.length ? `
+            <div class="linked-panel ${state.profile === 'single' ? 'from-single' : 'from-partner'}">
+              <div class="linked-label">关联家庭责任（请选择一项或多项）</div>
+              <div class="chip-grid">
+              ${responsibilityOptions.map((item) => chip(item, state.responsibilities.includes(item), `data-responsibility="${item}"`)).join('')}
+              </div>
+            </div>
+            <button class="primary" type="button" data-send-profile ${state.responsibilities.length ? '' : 'disabled'}>发送</button>
+          ` : ''}
+        `;
+      }
+
+      if (state.step === 'assetDebt') {
+        dock.innerHTML = `
+          ${title('资产与负债')}
+          <div class="asset-list">
+            <div class="asset-card">
+              <div class="asset-card-head">
+                <strong>流动资产</strong>
+              </div>
+              ${field('liquidAssets', '金额', '现金、存款、基金、股票、理财合计', state.assets.liquidAssets, '万元', 'data-asset="liquidAssets"')}
+            </div>
+            <div class="asset-card">
+              <div class="asset-card-head">
+                <strong>固定资产</strong>
+              </div>
+              ${field('fixedAssets', '金额', '房产等流动性较低资产估值', state.assets.fixedAssets, '万元', 'data-asset="fixedAssets"')}
+            </div>
+            <div class="asset-card">
+              <div class="asset-card-head">
+                <strong>当前总负债</strong>
+              </div>
+              ${field('totalDebt', '金额', '所有贷款和信用负债合计', state.assets.totalDebt, '万元', 'data-asset="totalDebt"')}
+            </div>
+          </div>
+          <button class="primary" type="button" data-send-assets>发送</button>
+        `;
+      }
+
+      if (state.step === 'cashflow') {
+        const surplus = calcSurplus();
+        dock.innerHTML = `
+          ${title('年度收入与支出', '用来计算年度结余和月均结余。')}
+          <div class="field-grid">
+            ${field('annualIncome', '年度收入', '年度收入', state.cashflow.annualIncome, '万元', 'data-cashflow="annualIncome"')}
+            ${field('annualExpense', '年度支出', '年度支出', state.cashflow.annualExpense, '万元', 'data-cashflow="annualExpense"')}
+          </div>
+          ${state.cashflow.annualIncome && state.cashflow.annualExpense ? `<p class="summary-line">年度结余约 ${surplus.toFixed(0)} 万，月均结余约 ${(surplus / 12).toFixed(1)} 万。</p>` : ''}
+          <button class="primary" type="button" data-send-cashflow>发送</button>
+        `;
+      }
+
+      if (state.step === 'goalSelect') {
+        const customGoals = state.selectedGoals.filter((item) => !goalOptions.includes(item));
+        dock.innerHTML = `
+          ${title('未来目标', '可以多选，也可以添加多个其他目标。')}
+          <div class="chip-grid">
+            ${goalOptions.map((item) => chip(state.selectedGoals.includes(item) ? `✓ ${item}` : item, state.selectedGoals.includes(item), `data-goal="${item}"`)).join('')}
+            ${customGoals.map((item) => chip(`✓ ${escapeHtml(item)}`, true, `data-goal="${escapeHtml(item)}"`)).join('')}
+          </div>
+          <button class="secondary" type="button" data-open-custom-goal>+ 添加其他目标</button>
+          <button class="primary" type="button" data-send-goals ${state.selectedGoals.length ? '' : 'disabled'}>发送</button>
+        `;
+      }
+
+      if (state.step === 'goalDetail') {
+        const name = state.selectedGoals[state.goalIndex];
+        const goal = getGoal(name);
+        const recurring = goal.frequency === '每月' || goal.frequency === '每年';
+        dock.innerHTML = `
+          ${title(`补充「${escapeHtml(name)}」`)}
+          <div class="dimension-card">
+            <div class="dimension-label">金额与周期</div>
+            <div class="money-row">
+              <div>
+                <div class="dimension-label">支出周期</div>
+                <div class="segmented">
+                  ${['每月', '每年', '一次性'].map((item) => `<button class="${goal.frequency === item ? 'active' : ''}" type="button" data-frequency="${item}">${item}</button>`).join('')}
+                </div>
+              </div>
+              ${field('goalAmount', goal.frequency === '一次性' ? '目标金额' : '金额', goal.frequency === '一次性' ? '目标金额' : '每期金额', goal.amount, '万元', 'data-goal-field="amount"')}
+            </div>
+          </div>
+          <div class="dimension-card">
+            <div class="dimension-label">时间安排</div>
+            <div class="time-row">
+              ${field('goalStart', '发生时间', '几年后', goal.start, '年后', 'data-goal-field="start"')}
+              ${field('goalDuration', '持续时间', recurring ? '持续几年' : '一次性无持续', goal.duration, '年', `data-goal-field="duration" ${recurring ? '' : 'disabled'}`)}
+            </div>
+          </div>
+          <div class="dimension-card">
+            <div class="dimension-label">目标属性</div>
+            <div class="necessity-row">
+              ${chip('必须', goal.priority === '必须', `data-priority="必须"`)}
+              ${chip('想要', goal.priority === '想要', `data-priority="想要"`)}
+            </div>
+          </div>
+          <button class="primary" type="button" data-send-goal-detail ${canSendGoalDetail(goal) ? '' : 'disabled'}>发送</button>
+        `;
+      }
+
+      if (state.step === 'assumptions') {
+        dock.innerHTML = `
+          ${title('默认假设')}
+          <div class="assumption-card">
+            <div><span>预期收益率</span><strong>${state.assumptions.returnRate}%</strong></div>
+            <div><span>折现率</span><strong>${state.assumptions.discountRate}%</strong></div>
+          </div>
+          <div class="button-row">
+            <button class="secondary" type="button" data-edit-assumptions>修改</button>
+            <button class="primary" type="button" data-finish>按默认先算</button>
+          </div>
+        `;
+      }
+
+      if (state.step === 'editAssumptions') {
+        dock.innerHTML = `
+          ${title('修改假设')}
+          <div class="field-grid">
+            ${field('returnRate', '预期收益率', '预期收益率', state.assumptions.returnRate, '%', 'data-assumption="returnRate"')}
+            ${field('discountRate', '折现率', '折现率', state.assumptions.discountRate, '%', 'data-assumption="discountRate"')}
+          </div>
+          <button class="primary" type="button" data-save-assumptions>保存并计算</button>
+        `;
+      }
+    }
+
+    function getGoal(name) {
+      if (!state.goals[name]) {
+        state.goals[name] = { priority: '', frequency: '', amount: '', start: '', duration: '' };
+      }
+      return state.goals[name];
+    }
+
+    function getUniqueGoalName(rawName) {
+      const baseName = rawName.trim().replace(/\s+/g, ' ');
+      let name = baseName;
+      let index = 2;
+      while (state.selectedGoals.includes(name) || state.goals[name]) {
+        name = `${baseName} ${index}`;
+        index += 1;
+      }
+      return name;
+    }
+
+    function canSendGoalDetail(goal) {
+      if (!goal.priority || !goal.frequency || !goal.amount || !goal.start) return false;
+      if ((goal.frequency === '每月' || goal.frequency === '每年') && !goal.duration) return false;
+      return true;
+    }
+
+    function calcSurplus() {
+      return Math.max((Number(state.cashflow.annualIncome) || 0) - (Number(state.cashflow.annualExpense) || 0), 0);
+    }
+
+    function summarizeGoal(name) {
+      const goal = getGoal(name);
+      const parts = [name, goal.priority, goal.frequency, goal.amount ? `${goal.amount} 万` : '', goal.start ? `${goal.start} 年后` : ''];
+      if ((goal.frequency === '每月' || goal.frequency === '每年') && goal.duration) parts.push(`持续 ${goal.duration} 年`);
+      return parts.filter(Boolean).join('，');
+    }
+
+    function start() {
+      addBubble('user', '我想生成一份家庭财务规划。');
+      showDockLoading('正在进入身份判断');
+      window.setTimeout(() => ask('这份规划先按谁来做？', 'profile'), transitionDelay);
+    }
+
+    dock.addEventListener('click', (event) => {
+      const target = event.target.closest('button');
+      if (!target) return;
+
+      if (target.dataset.profile) {
+        state.profile = target.dataset.profile;
+        state.responsibilities = [];
+        renderDock();
+      }
+
+      if (target.dataset.responsibility) {
+        const value = target.dataset.responsibility;
+        if (value === '暂无') {
+          state.responsibilities = ['暂无'];
+        } else {
+          state.responsibilities = state.responsibilities.filter((item) => item !== '暂无');
+          state.responsibilities = state.responsibilities.includes(value)
+            ? state.responsibilities.filter((item) => item !== value)
+            : [...state.responsibilities, value];
+        }
+        renderDock();
+      }
+
+      if (target.hasAttribute('data-send-profile')) {
+        if (!state.profile) return;
+        const profileText = state.profile === 'single' ? '单身为自己规划' : '和伴侣 / 夫妻共同规划';
+        const responsibilityText = state.responsibilities.length ? state.responsibilities.join('、') : '暂无';
+        addBubble('user', `${profileText}；家庭责任：${responsibilityText}`);
+        showDockLoading('正在整理资产问题');
+        window.setTimeout(() => ask('先看资产和负债。请一次填三项：流动资产、固定资产、当前总负债。', 'assetDebt'), transitionDelay);
+      }
+
+      if (target.hasAttribute('data-send-assets')) {
+        addBubble('user', `流动资产 ${state.assets.liquidAssets || '-'} 万，固定资产 ${state.assets.fixedAssets || '-'} 万，当前总负债 ${state.assets.totalDebt || '-'} 万。`);
+        showDockLoading('正在整理现金流问题');
+        window.setTimeout(() => ask('接下来算一年真实能留下多少钱。请填写年度收入和年度支出。', 'cashflow'), transitionDelay);
+      }
+
+      if (target.hasAttribute('data-send-cashflow')) {
+        const surplus = calcSurplus();
+        addBubble('user', `年度收入 ${state.cashflow.annualIncome || '-'} 万，年度支出 ${state.cashflow.annualExpense || '-'} 万，年度结余约 ${surplus.toFixed(0)} 万。`);
+        showDockLoading('正在整理未来目标');
+        window.setTimeout(() => ask('未来主要想规划哪些目标？可以一次选多个。', 'goalSelect'), transitionDelay);
+      }
+
+      if (target.dataset.goal) {
+        const goal = target.dataset.goal;
+        state.selectedGoals = state.selectedGoals.includes(goal)
+          ? state.selectedGoals.filter((item) => item !== goal)
+          : [...state.selectedGoals, goal];
+        if (!state.selectedGoals.includes(goal)) delete state.goals[goal];
+        renderDock();
+      }
+
+      if (target.hasAttribute('data-open-custom-goal')) {
+        state.customGoalDraft = '';
+        renderCustomGoalModal(true);
+      }
+
+      if (target.hasAttribute('data-send-goals')) {
+        if (!state.selectedGoals.length) return;
+        addBubble('user', state.selectedGoals.join('、'));
+        state.goalIndex = 0;
+        showDockLoading('正在准备目标补充');
+        window.setTimeout(() => ask(`补一下「${state.selectedGoals[state.goalIndex]}」的信息。`, 'goalDetail'), transitionDelay);
+      }
+
+      if (target.dataset.priority) {
+        getGoal(state.selectedGoals[state.goalIndex]).priority = target.dataset.priority;
+        renderDock();
+      }
+
+      if (target.dataset.frequency) {
+        const goal = getGoal(state.selectedGoals[state.goalIndex]);
+        goal.frequency = target.dataset.frequency;
+        if (goal.frequency === '一次性') goal.duration = '';
+        renderDock();
+      }
+
+      if (target.hasAttribute('data-send-goal-detail')) {
+        const name = state.selectedGoals[state.goalIndex];
+        addBubble('user', summarizeGoal(name));
+        state.goalIndex += 1;
+        if (state.goalIndex < state.selectedGoals.length) {
+          showDockLoading('正在切换下一个目标');
+          window.setTimeout(() => ask(`再补「${state.selectedGoals[state.goalIndex]}」的信息。`, 'goalDetail'), transitionDelay);
+        } else {
+          showDockLoading('正在整理默认假设');
+          window.setTimeout(() => ask('最后确认默认假设。', 'assumptions'), transitionDelay);
+        }
+      }
+
+      if (target.hasAttribute('data-edit-assumptions')) {
+        state.step = 'editAssumptions';
+        renderDock();
+      }
+
+      if (target.hasAttribute('data-save-assumptions')) {
+        addBubble('user', `预期收益率 ${state.assumptions.returnRate}%，折现率 ${state.assumptions.discountRate}%。`);
+        finish();
+      }
+
+      if (target.hasAttribute('data-finish')) {
+        addBubble('user', `按默认先算：预期收益率 ${state.assumptions.returnRate}%，折现率 ${state.assumptions.discountRate}%。`);
+        finish();
+      }
+    });
+
+    dock.addEventListener('input', (event) => {
+      const target = event.target;
+      if (target.dataset.asset) state.assets[target.dataset.asset] = target.value.trim();
+      if (target.dataset.cashflow) {
+        state.cashflow[target.dataset.cashflow] = target.value.trim();
+      }
+      if (target.dataset.goalField) {
+        const goal = getGoal(state.selectedGoals[state.goalIndex]);
+        goal[target.dataset.goalField] = target.value.trim();
+        const sendButton = dock.querySelector('[data-send-goal-detail]');
+        if (sendButton) sendButton.disabled = !canSendGoalDetail(goal);
+      }
+      if (target.dataset.assumption) state.assumptions[target.dataset.assumption] = target.value.trim();
+    });
+
+    customGoalModal.addEventListener('click', (event) => {
+      if (event.target === customGoalModal || event.target.closest('[data-cancel-custom-goal]')) {
+        state.customGoalDraft = '';
+        renderCustomGoalModal(false);
+        return;
+      }
+
+      if (event.target.closest('[data-save-custom-goal]')) {
+        const name = getUniqueGoalName(state.customGoalDraft);
+        if (!name) return;
+        state.selectedGoals = [...state.selectedGoals, name];
+        getGoal(name);
+        state.customGoalDraft = '';
+        renderCustomGoalModal(false);
+        renderDock();
+      }
+    });
+
+    customGoalModal.addEventListener('input', (event) => {
+      const target = event.target;
+      if (!target.hasAttribute('data-custom-goal-name')) return;
+      state.customGoalDraft = target.value.trim();
+      const saveButton = customGoalModal.querySelector('[data-save-custom-goal]');
+      if (saveButton) saveButton.disabled = !state.customGoalDraft;
+    });
+
+    customGoalModal.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      const saveButton = customGoalModal.querySelector('[data-save-custom-goal]');
+      if (!saveButton || saveButton.disabled) return;
+      saveButton.click();
+    });
+
+    function finish() {
+      showDockLoading('正在准备分析');
+      window.setTimeout(() => {
+        dock.innerHTML = '';
+        addBubble('ai', '收到。我会基于这些信息生成资产重构、核心结论、风险和行动建议。');
+      }, transitionDelay);
+    }
+
+    menuButton.addEventListener('click', () => {
+      menu.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!menu.contains(event.target) && event.target !== menuButton) {
+        menu.classList.remove('open');
+      }
+    });
+
+    start();
+  </script>
+</body>
+</html>

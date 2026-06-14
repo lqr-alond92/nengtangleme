@@ -1,17 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  AlertTriangle,
   ArrowRight,
   Bot,
   BriefcaseBusiness,
   Check,
-  ChevronRight,
   Coins,
+  Eye,
   Home,
   KeyRound,
   Landmark,
+  Monitor,
+  MousePointer2,
   Pencil,
   PiggyBank,
+  Play,
   Plus,
   Radar,
   RefreshCcw,
@@ -26,7 +30,6 @@ import {
 } from 'lucide-react';
 import {
   annualSurplusAtYear,
-  buildAiReport,
   buildMetrics,
   clamp,
   decimal,
@@ -38,6 +41,7 @@ import {
   MODEL_PROVIDERS,
   MANAGED_MODEL_LABEL,
   MODEL_SETTINGS_STORAGE_KEY,
+  callManagedAnalysis,
   callManagedModel,
   callConfiguredModel,
   defaultModelSettings,
@@ -45,6 +49,7 @@ import {
   hasModelKey,
   maskApiKey,
   normalizeModelSettings,
+  parseAnalysisContent,
 } from './modelClient.mjs';
 import { applyPlanSupplement } from './supplement.mjs';
 import './styles.css';
@@ -54,6 +59,9 @@ const ONBOARDING_STORAGE_KEY = 'neng_tang_onboarding_complete_v1';
 const API_BASE = '';
 
 const defaultPlan = {
+  planningScope: 'single',
+  familyResponsibilities: [],
+  cityTier: 'newFirstTier',
   liquidAssets: 220000,
   lockedAssets: 980000,
   assets: 1200000,
@@ -131,6 +139,112 @@ const optionalGoalPresets = [
   { id: 'freelance', name: '创业 / 自由职业', kind: 'oneTime', amount: 500000, year: 4 },
 ];
 
+const planningScopeOptions = [
+  { id: 'single', name: '我一个人为自己规划' },
+  { id: 'couple', name: '我和伴侣/夫妻一起规划' },
+];
+
+const familyResponsibilityOptions = [
+  { id: 'children', name: '有孩子' },
+  { id: 'education', name: '需要考虑教育' },
+  { id: 'elderCare', name: '需要赡养老人' },
+  { id: 'other', name: '其他家庭责任' },
+];
+
+const cityTierOptions = [
+  { id: 'firstTier', name: '一线城市' },
+  { id: 'newFirstTier', name: '新一线/强二线' },
+  { id: 'secondTier', name: '普通二线' },
+  { id: 'lowerTier', name: '三四线及以下' },
+];
+
+const coachScenarios = [
+  {
+    id: 'managed-ai',
+    name: '配置托管 AI',
+    summary: 'CloudBase 云函数 + DeepSeek Key',
+    checkpoints: [
+      {
+        title: '确认配置目标',
+        observed: '你应该停在 CloudBase 云函数或部署清单页面，准备配置服务端环境变量。',
+        nextAction: '先找到云函数 ai-chat 的环境变量区域，准备新增 DEEPSEEK_API_KEY。',
+        risk: '不要把 Key 粘贴到前端文件、README 截图或公开聊天里。',
+        verify: '保存后页面能看到环境变量名，但不应明文显示完整 Key。',
+      },
+      {
+        title: '绑定访问路径',
+        observed: '页面上会出现 HTTP 访问服务、路径映射或触发器配置。',
+        nextAction: '把云函数 HTTP 路径映射到 /api/ai-chat，保留 POST 请求能力。',
+        risk: '如果路径写成完整第三方接口，前端会绕过代理并暴露调用细节。',
+        verify: '本地或线上请求 /api/ai-chat 时返回 JSON，而不是 404。',
+      },
+      {
+        title: '完成连通性测试',
+        observed: '回到 App 的 AI 页面，点击测试 AI 服务后等待返回。',
+        nextAction: '看到“可用”再继续；如果失败，先检查 Key、云函数日志和路径映射。',
+        risk: '不要为了省事把 API Key 写进 Vite 环境变量或浏览器 localStorage。',
+        verify: '测试状态包含服务商、模型名和一小段 AI 返回内容。',
+      },
+    ],
+  },
+  {
+    id: 'local-dev',
+    name: '跑通本地开发',
+    summary: '安装依赖、启动服务、检查页面',
+    checkpoints: [
+      {
+        title: '确认项目目录',
+        observed: '终端当前位置应显示项目根目录，能看到 package.json。',
+        nextAction: '如果不在项目根目录，先切到这个项目文件夹，再执行依赖安装。',
+        risk: '不要在系统目录或其他项目里安装依赖，避免把文件写错地方。',
+        verify: '执行 npm install 后没有严重报错，并生成 node_modules。',
+      },
+      {
+        title: '启动开发服务',
+        observed: '终端里会出现 Vite 的本地访问地址，通常是 127.0.0.1:5173。',
+        nextAction: '保持终端运行，不要关闭窗口，然后用浏览器打开本地地址。',
+        risk: '如果端口被占用，不要反复重装，换端口或关闭旧服务即可。',
+        verify: '浏览器能看到应用首屏，控制台没有连续刷新或白屏。',
+      },
+      {
+        title: '验证核心流程',
+        observed: '页面应能完成问诊、进入规划页，并能切换资产、目标、模型页面。',
+        nextAction: '按最小流程走一遍，再记录任何卡住的页面和报错文案。',
+        risk: '测试时不要输入真实隐私数据，先用样例数字跑通流程。',
+        verify: '刷新后数据仍在当前设备保留，说明 localStorage 生效。',
+      },
+    ],
+  },
+  {
+    id: 'launch-domain',
+    name: '上线域名',
+    summary: 'DNS、备案、HTTPS 发布检查',
+    checkpoints: [
+      {
+        title: '确认上线材料',
+        observed: '你会在域名、备案、DNS 或静态托管控制台之间切换。',
+        nextAction: '先核对域名主体、备案状态、静态站点地址是否齐全。',
+        risk: '不要急着改 DNS；备案或证书没好时，改了也可能访问失败。',
+        verify: '上线清单里每项都有明确状态：待办、进行中、已完成。',
+      },
+      {
+        title: '配置解析记录',
+        observed: 'DNS 控制台一般会要求填写记录类型、主机记录和值。',
+        nextAction: '按托管平台给出的 CNAME 或 A 记录填写，保存前逐项复核。',
+        risk: '主机记录 @ 和 www 容易填反；TTL 不会立刻生效，别频繁乱改。',
+        verify: '解析生效后，域名能指向托管平台而不是旧页面。',
+      },
+      {
+        title: '检查 HTTPS 与 PWA',
+        observed: '浏览器地址栏应显示安全连接，PWA manifest 和图标能正常加载。',
+        nextAction: '打开正式域名，检查首页、AI 代理路径和添加到主屏幕体验。',
+        risk: 'HTTPS 混合内容会导致手机端体验异常，尤其是 AI 接口请求。',
+        verify: '手机浏览器能打开、刷新、添加到主屏幕，并保留本地规划数据。',
+      },
+    ],
+  },
+];
+
 function loadPlan() {
   try {
     const stored = localStorage.getItem(PLAN_STORAGE_KEY);
@@ -180,12 +294,16 @@ function normalizePlan(plan) {
   return {
     ...defaultPlan,
     ...plan,
+    planningScope: plan.planningScope || defaultPlan.planningScope || 'unknown',
+    familyResponsibilities: Array.isArray(plan.familyResponsibilities) ? plan.familyResponsibilities : defaultPlan.familyResponsibilities || [],
+    cityTier: plan.cityTier || defaultPlan.cityTier || 'unknown',
     liquidAssets,
     lockedAssets,
     assets,
     liabilities: toNumber(plan.liabilities),
     annualIncome: toNumber(plan.annualIncome),
     annualExpense: toNumber(plan.annualExpense),
+    workYears: toNumber(plan.workYears ?? defaultPlan.workYears),
     goals: Array.isArray(plan.goals) ? plan.goals.map(normalizeGoal) : defaultPlan.goals,
   };
 }
@@ -224,55 +342,66 @@ function formatNumberInput(value) {
   return Number.isInteger(numeric) ? String(numeric) : String(Number(numeric.toFixed(4)));
 }
 
+function selectedOptionNames(options, ids) {
+  const selected = options.filter((option) => ids.includes(option.id)).map((option) => option.name);
+  return selected.join('、');
+}
+
 function onboardingInputConfig(step) {
   return {
     liquidAssets: {
-      title: '请填写可立即动用资产',
-      helper: '先不看房子这些大件，只填短期真正能拿出来用的钱。',
+      title: '请填写灵活资产',
+      helper: '现金、存款、基金、股票、理财等，比较容易动用的钱。',
       unit: '万元',
-      placeholder: '例如 22',
-      quickValues: ['10', '30', '80'],
-      label: '可立即动用约 ',
+      placeholder: '例如 15',
+      quickValues: ['10', '30', '100'],
+      label: '灵活资产约 ',
+      multiplier: 10000,
     },
     lockedAssets: {
-      title: '请填写不易变现资产',
-      helper: '房子、车、长期资产等账面上有、但不太能直接花的钱。',
+      title: '请填写固定资产',
+      helper: '房产、车位、长期资产等，不太容易快速变现的资产。',
       unit: '万元',
-      placeholder: '例如 98',
-      quickValues: ['50', '150', '500'],
-      label: '不易变现约 ',
+      placeholder: '例如 900',
+      quickValues: ['0', '300', '900'],
+      label: '固定资产约 ',
+      multiplier: 10000,
     },
     liabilities: {
-      title: '请填写你的总负债',
-      helper: '房贷、车贷、信用贷、消费贷都算进去。',
+      title: '请填写总负债',
+      helper: '房贷、车贷、消费贷、信用卡、亲友借款都合并估算。',
       unit: '万元',
-      placeholder: '例如 35',
-      quickValues: ['0', '50', '150'],
+      placeholder: '例如 450',
+      quickValues: ['0', '100', '450'],
       label: '负债约 ',
+      multiplier: 10000,
     },
     annualIncome: {
       title: '请填写家庭年收入',
       helper: '按税后口径估算，包括工资、经营收入和稳定副业。',
       unit: '万元/年',
-      placeholder: '例如 42',
-      quickValues: ['20', '40', '80'],
+      placeholder: '例如 95',
+      quickValues: ['30', '60', '100'],
       label: '年收入约 ',
-    },
-    annualSurplus: {
-      title: '请填写年度可规划结余',
-      helper: '一年结束后，真正能放进长期规划的钱。',
-      unit: '万元/年',
-      placeholder: '例如 18',
-      quickValues: ['10', '20', '35'],
-      label: '年度结余约 ',
+      multiplier: 10000,
     },
     annualExpense: {
-      title: '请填写年度总支出',
+      title: '请填写家庭年支出',
       helper: '日常生活、房贷房租、孩子、父母、保险和固定支出都算进去。',
       unit: '万元/年',
-      placeholder: '例如 24',
-      quickValues: ['15', '25', '40'],
-      label: '年度支出约 ',
+      placeholder: '例如 25',
+      quickValues: ['20', '40', '70'],
+      label: '年支出约 ',
+      multiplier: 10000,
+    },
+    workYears: {
+      title: '请填写预计工作年限',
+      helper: '从现在开始，你预计还会持续工作多少年？这会影响未来收入折现值。',
+      unit: '年',
+      placeholder: '例如 20',
+      quickValues: ['10', '20', '30'],
+      label: '预计还会工作 ',
+      multiplier: 1,
     },
   }[step];
 }
@@ -283,6 +412,7 @@ function App() {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(loadOnboardingState);
   const [isSupplementing, setIsSupplementing] = useState(false);
   const [supplementInitialQuestion, setSupplementInitialQuestion] = useState('');
+  const [supplementInitialMode, setSupplementInitialMode] = useState('');
   const [modelSettings, setModelSettings] = useState(loadModelSettings);
   const [draftKind, setDraftKind] = useState('oneTime');
   const [draftGoal, setDraftGoal] = useState(() => freshGoal('oneTime'));
@@ -363,8 +493,9 @@ function App() {
     setSyncStatus('未登录草稿');
   }
 
-  function startSupplement(initialQuestion = '') {
+  function startSupplement(initialQuestion = '', initialMode = '') {
     setSupplementInitialQuestion(initialQuestion);
+    setSupplementInitialMode(initialMode);
     setActiveTab('planning');
     setIsSupplementing(true);
   }
@@ -430,6 +561,7 @@ function App() {
     return (
       <SupplementExperience
         initialQuestion={supplementInitialQuestion}
+        initialMode={supplementInitialMode}
         modelSettings={modelSettings}
         onCancel={() => setIsSupplementing(false)}
         onComplete={completeSupplement}
@@ -439,16 +571,17 @@ function App() {
     );
   }
 
+  const isPlanningView = activeTab === 'planning';
+
   return (
-    <div className="app-shell">
-      <main className="app-frame">
-        <LocalAlphaBar modelSettings={modelSettings} onOpenSettings={openModelSettings} syncStatus={syncStatus} />
+    <div className={isPlanningView ? 'app-shell planning-app-shell' : 'app-shell'}>
+      <main className={isPlanningView ? 'app-frame planning-frame' : 'app-frame'}>
+        {!isPlanningView && <LocalAlphaBar onBackToPlanning={() => setActiveTab('planning')} syncStatus={syncStatus} />}
         {activeTab === 'asset' && <AssetPage metrics={metrics} plan={plan} updatePlan={updatePlan} />}
         {activeTab === 'planning' && (
           <PlanningPage
             metrics={metrics}
             modelSettings={modelSettings}
-            openModelSettings={openModelSettings}
             plan={plan}
             restartOnboarding={restartOnboarding}
             setActiveTab={setActiveTab}
@@ -471,25 +604,24 @@ function App() {
             updatePlan={updatePlan}
           />
         )}
+        {activeTab === 'coach' && <CoachPage />}
         {activeTab === 'model' && (
           <ModelSettingsPage metrics={metrics} plan={plan} settings={modelSettings} updateSettings={setModelSettings} />
         )}
-        {activeTab === 'planning' && <AiDock onClick={startSupplement} />}
-        <BottomTabs activeTab={activeTab} setActiveTab={setActiveTab} />
       </main>
     </div>
   );
 }
 
-function LocalAlphaBar({ modelSettings, onOpenSettings, syncStatus }) {
+function LocalAlphaBar({ onBackToPlanning, syncStatus }) {
   return (
     <section className="account-bar local-alpha-bar">
       <div>
         <strong>手机 Alpha，当前设备保存</strong>
         <span>{syncStatus} · {MANAGED_MODEL_LABEL} 已连接</span>
       </div>
-      <button type="button" onClick={onOpenSettings}>
-        AI
+      <button type="button" onClick={onBackToPlanning}>
+        规划
       </button>
     </section>
   );
@@ -588,6 +720,9 @@ function OnboardingExperience({ onComplete }) {
   const [step, setStep] = useState(null);
   const [textInput, setTextInput] = useState('');
   const [draftPlan, setDraftPlan] = useState({ ...defaultPlan, goals: [] });
+  const [selectedPlanningScope, setSelectedPlanningScope] = useState([]);
+  const [selectedResponsibilities, setSelectedResponsibilities] = useState([]);
+  const [selectedCityTier, setSelectedCityTier] = useState([]);
   const [selectedRequired, setSelectedRequired] = useState([]);
   const [selectedOptional, setSelectedOptional] = useState([]);
   const [goalQueue, setGoalQueue] = useState([]);
@@ -626,39 +761,69 @@ function OnboardingExperience({ onComplete }) {
     setStage('chat');
     pushMessage('user', '我想生成一份家庭财务规划。');
     window.setTimeout(() => {
-      pushMessage('ai', '我先帮你搭一张家庭财务地图。你不用一次填完，我会一个问题一个问题问，只收集会影响人生计划的数字。');
-      window.setTimeout(() => ask('liquidAssets', '先不看房子这些大件。现在家里真正能拿出来用的钱，大概有多少？按万元填就行。'), 650);
+      pushMessage('ai', '我们先做一个 2 分钟家庭画像：家庭阶段、城市、资产、负债、收入支出、预计工作年限和未来目标。信息越贴近真实，后面的 AI 判断越像是在看你自己的账。');
+      window.setTimeout(() => ask('planningScope', '这份规划先按谁来做？'), 650);
     }, 380);
   }
 
-  function answerNumber(label, field, multiplier = 10000) {
-    const value = toNumber(textInput) * multiplier;
-    pushMessage('user', `${label}${textInput} 万`);
-    setDraftPlan((current) => normalizePlan({ ...current, [field]: value }));
+  function confirmPlanningScope() {
+    const scope = selectedPlanningScope[0];
+    if (!scope) return;
+    const nextPlan = normalizePlan({ ...draftPlan, planningScope: scope });
+    setDraftPlan(nextPlan);
+    pushMessage('user', selectedOptionNames(planningScopeOptions, selectedPlanningScope));
+    window.setTimeout(() => {
+      ask('familyResponsibilities', '再看家庭责任。下面这些可以多选；如果暂时都没有，也可以直接继续。');
+    }, 420);
+  }
+
+  function confirmResponsibilities() {
+    const nextPlan = normalizePlan({ ...draftPlan, familyResponsibilities: selectedResponsibilities });
+    setDraftPlan(nextPlan);
+    pushMessage(
+      'user',
+      selectedResponsibilities.length > 0
+        ? selectedOptionNames(familyResponsibilityOptions, selectedResponsibilities)
+        : '暂时没有额外家庭责任',
+    );
+    window.setTimeout(() => ask('cityTier', '你们主要生活在哪类城市？这会影响支出、房产和目标压力。'), 420);
+  }
+
+  function confirmCityTier() {
+    const cityTier = selectedCityTier[0];
+    if (!cityTier) return;
+    const nextPlan = normalizePlan({ ...draftPlan, cityTier });
+    setDraftPlan(nextPlan);
+    pushMessage('user', selectedOptionNames(cityTierOptions, selectedCityTier));
+    window.setTimeout(() => {
+      ask('liquidAssets', '先看真正能动用的钱：现金、存款、基金、股票、理财等，大概有多少？按万元填就行。');
+    }, 420);
+  }
+
+  function answerNumber(config, field) {
+    const value = toNumber(textInput) * (config.multiplier ?? 10000);
+    const nextPlan = normalizePlan({ ...draftPlan, [field]: value });
+    pushMessage('user', `${config.label}${textInput} ${config.unit}`);
+    setDraftPlan(nextPlan);
     setTextInput('');
 
     const nextMap = {
-      liquidAssets: () => ask('lockedAssets', `我先记为：可立即动用资产 ${textInput} 万。再看那些账面上有、但不太能直接花的钱，比如房子、车、长期资产，大概有多少？`),
+      liquidAssets: () => ask('lockedAssets', `我先记为：灵活资产 ${textInput} 万。再看账面上有、但不太能直接花的钱，比如房子、车位、长期资产，大概有多少？`),
       lockedAssets: () => {
-        const totalAssets = draftPlan.liquidAssets + value;
-        ask('liabilities', `收到，账面总资产约 ${money(totalAssets)}。这些资产背后，还有多少负债？比如房贷、车贷、信用贷。`);
+        const totalAssets = nextPlan.liquidAssets + nextPlan.lockedAssets;
+        ask('liabilities', `收到，账面总资产约 ${money(totalAssets)}。这些资产背后，还有多少总负债？房贷、车贷、消费贷、信用卡都合并估算。`);
       },
       liabilities: () => {
-        const netWorth = draftPlan.assets - value;
+        const netWorth = nextPlan.assets - nextPlan.liabilities;
         ask('annualIncome', `收到，当前净资产约 ${money(netWorth)}。接下来，一年税后大概能赚多少钱？`);
       },
-      annualIncome: () => ask('annualSurplus', `年度收入先记为 ${textInput} 万。那一年下来，大概能剩下多少钱用于长期规划？`),
-      annualSurplus: () => {
-        const annualIncome = draftPlan.annualIncome;
-        const annualExpense = Math.max(0, annualIncome - value);
-        setDraftPlan((current) => ({ ...current, annualExpense }));
-        askRequiredGoals(value);
-      },
+      annualIncome: () => ask('annualExpense', `年度收入先记为 ${textInput} 万。那一年大概会花掉多少钱？日常、房贷房租、孩子、父母、保险都算进去。`),
       annualExpense: () => {
-        const annualIncome = draftPlan.annualIncome;
-        const annualExpense = value;
-        const annualSurplus = Math.max(0, annualIncome - annualExpense);
-        setDraftPlan((current) => ({ ...current, annualExpense }));
+        const annualSurplus = Math.max(0, nextPlan.annualIncome - nextPlan.annualExpense);
+        ask('workYears', `这样算下来，年度可规划结余约 ${money(annualSurplus)}。从现在开始，你预计还会工作多少年？`);
+      },
+      workYears: () => {
+        const annualSurplus = Math.max(0, nextPlan.annualIncome - nextPlan.annualExpense);
         askRequiredGoals(annualSurplus);
       },
     };
@@ -667,17 +832,16 @@ function OnboardingExperience({ onComplete }) {
   }
 
   function askRequiredGoals(annualSurplus) {
-    pushMessage('ai', `先按年度可规划结余 ${money(annualSurplus)} 进入测算。现在看底线目标：未来哪些事情是家庭必须保障、不能轻易放弃的？可以一次选多个。`);
+    pushMessage('ai', `先按年度可规划结余 ${money(annualSurplus)} 和预计工作年限进入测算。现在看底线目标：未来哪些事情是家庭必须保障、不能轻易放弃的？可以一次选多个。`);
     setStep('requiredGoals');
-  }
-
-  function beginExpenseSplit() {
-    pushMessage('user', '帮我拆开算');
-    ask('annualExpense', '那我先问年度总支出。包含日常生活、房贷房租、孩子、父母、保险和其他固定支出，一年大概多少万元？');
   }
 
   function toggleSelection(id, setter) {
     setter((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function selectSingle(id, setter) {
+    setter([id]);
   }
 
   function confirmRequiredGoals() {
@@ -814,10 +978,47 @@ function OnboardingExperience({ onComplete }) {
   function renderDock() {
     if (!step) return null;
 
-    if (['liquidAssets', 'lockedAssets', 'liabilities', 'annualIncome', 'annualSurplus', 'annualExpense'].includes(step)) {
+    if (step === 'planningScope') {
+      return (
+        <ChoicePanel
+          cta="继续"
+          disabled={selectedPlanningScope.length === 0}
+          onConfirm={confirmPlanningScope}
+          options={planningScopeOptions}
+          selected={selectedPlanningScope}
+          toggle={(id) => selectSingle(id, setSelectedPlanningScope)}
+        />
+      );
+    }
+
+    if (step === 'familyResponsibilities') {
+      return (
+        <ChoicePanel
+          cta={selectedResponsibilities.length > 0 ? '继续' : '暂时没有，继续'}
+          onConfirm={confirmResponsibilities}
+          options={familyResponsibilityOptions}
+          selected={selectedResponsibilities}
+          toggle={(id) => toggleSelection(id, setSelectedResponsibilities)}
+        />
+      );
+    }
+
+    if (step === 'cityTier') {
+      return (
+        <ChoicePanel
+          cta="继续"
+          disabled={selectedCityTier.length === 0}
+          onConfirm={confirmCityTier}
+          options={cityTierOptions}
+          selected={selectedCityTier}
+          toggle={(id) => selectSingle(id, setSelectedCityTier)}
+        />
+      );
+    }
+
+    if (['liquidAssets', 'lockedAssets', 'liabilities', 'annualIncome', 'annualExpense', 'workYears'].includes(step)) {
       const config = onboardingInputConfig(step);
-      const submit =
-        () => answerNumber(config.label, step);
+      const submit = () => answerNumber(config, step);
 
       return (
         <div className="onboarding-input-card">
@@ -831,11 +1032,6 @@ function OnboardingExperience({ onComplete }) {
                 {value} {config.unit}
               </button>
             ))}
-            {step === 'annualSurplus' && (
-              <button type="button" onClick={beginExpenseSplit}>
-                帮我拆开算
-              </button>
-            )}
           </div>
           <label className="chat-input">
             <input
@@ -992,7 +1188,6 @@ function OnboardingExperience({ onComplete }) {
     return (
       <div className="onboarding-shell">
         <section className="onboarding-phone">
-          <div className="phone-grip" />
           <header className="onboarding-top">
             <div className="brand-mark">
               <span>躺</span>
@@ -1043,16 +1238,15 @@ function OnboardingExperience({ onComplete }) {
     return (
       <div className="onboarding-shell">
         <section className="onboarding-phone loading-phone">
-          <div className="phone-grip" />
           <div className="loading-card">
             <Sparkles size={26} />
             <h2>正在把对话整理成你的规划页</h2>
-            <p>AI 正在生成家庭财务地图、折现未来目标，并检查 7 个关键指标。</p>
+            <p>正在把你的家庭画像、未来收入和未来目标折算到今天，再判断长期规划是否站得住。</p>
             <div className="loading-lines">
-              <span>生成家庭财务地图</span>
+              <span>重构真实资产</span>
+              <span>折现未来收入</span>
               <span>折现未来目标</span>
-              <span>检查 7 个关键指标</span>
-              <span>判断哪些目标最挤压计划</span>
+              <span>生成长期规划判断</span>
             </div>
           </div>
         </section>
@@ -1063,7 +1257,6 @@ function OnboardingExperience({ onComplete }) {
   return (
     <div className="onboarding-shell">
       <section className="onboarding-phone chat-phone">
-        <div className="phone-grip" />
         <header className="chat-topbar">
           <div className="brand-mark">
             <span>躺</span>
@@ -1088,7 +1281,153 @@ function OnboardingExperience({ onComplete }) {
   );
 }
 
-function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, onComplete, onOpenSettings, plan }) {
+function cleanAiText(value = '') {
+  return String(value || '')
+    .replace(/```(?:json)?/gi, '')
+    .replace(/```/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/^\s*[-*]\s+/gm, '')
+    .replace(/^\s*\d+[.)、]\s*/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function compactAiText(value = '', maxLength = 92) {
+  const text = cleanAiText(value).replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trim()}...`;
+}
+
+function firstSentence(value = '', maxLength = 42) {
+  const text = cleanAiText(value).replace(/\s+/g, ' ').trim();
+  const sentence = text.split(/[。！？!?]/).find(Boolean) || text;
+  return compactAiText(sentence, maxLength);
+}
+
+function splitFallbackCards(content = '') {
+  const cleaned = cleanAiText(content);
+  const numbered = cleaned
+    .split(/\n\s*(?:\d+[.)、]|[一二三四五六七八九十]+[、.])\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 12);
+  const chunks = numbered.length >= 2
+    ? numbered
+    : cleaned
+        .split(/\n+/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 12);
+
+  return chunks.slice(0, 3).map((chunk, index) => {
+    const title = firstSentence(chunk, 14) || `要点 ${index + 1}`;
+    return {
+      title,
+      body: compactAiText(chunk.replace(title, '').trim() || chunk, 96),
+    };
+  });
+}
+
+function normalizeUserVoiceQuestion(value = '') {
+  let text = cleanAiText(value).replace(/[。.!！]+$/g, '').trim();
+  if (!text) return '';
+
+  const replacements = [
+    [/^你是否想知道/, '我想知道'],
+    [/^你是否需要/, '我是否需要'],
+    [/^你是否/, '我是否'],
+    [/^您是否/, '我是否'],
+    [/^是否考虑/, '我是否要考虑'],
+    [/^是否需要/, '我是否需要'],
+    [/^是否可以/, '我是否可以'],
+    [/^你希望/, '我想'],
+    [/^你想/, '我想'],
+    [/^你应该/, '我应该'],
+    [/^你可以/, '我可以'],
+    [/^请补充/, '我还需要补充'],
+    [/^建议你/, '我是否应该'],
+    [/^用户是否/, '我是否'],
+    [/^用户可以/, '我可以'],
+    [/^用户需要/, '我需要'],
+    [/^用户/, '我'],
+  ];
+
+  replacements.some(([pattern, replacement]) => {
+    if (pattern.test(text)) {
+      text = text.replace(pattern, replacement);
+      return true;
+    }
+    return false;
+  });
+
+  if (!/^(我|我的|如果我|假如我|先|能不能|要不要|怎么|哪些|还差|还需要)/.test(text)) {
+    text = `我想知道${text}`;
+  }
+
+  if (!/[？?]$/.test(text)) text += '？';
+  return compactAiText(text, 30);
+}
+
+function normalizeFollowUpAnswer(content, question = '') {
+  const parsed = parseAnalysisContent(content);
+  const cardsSource = Array.isArray(parsed?.cards) ? parsed.cards : [];
+  const normalizedCards = cardsSource
+    .slice(0, 3)
+    .map((card, index) => ({
+      title: compactAiText(card.title || card.label || `要点 ${index + 1}`, 16),
+      body: compactAiText(card.body || card.detail || card.reason || card.suggestion || card.description || '', 98),
+    }))
+    .filter((card) => card.title || card.body);
+  const fallbackCards = normalizedCards.length ? normalizedCards : splitFallbackCards(content);
+  const cleanContent = cleanAiText(content);
+  const headline = compactAiText(parsed?.headline || firstSentence(cleanContent || question, 26), 26);
+  const summary = compactAiText(
+    parsed?.summary || parsed?.answer || parsed?.conclusion || cleanContent,
+    112,
+  );
+  const nextQuestions = Array.isArray(parsed?.nextQuestions)
+    ? parsed.nextQuestions
+    : Array.isArray(parsed?.followUpQuestions)
+      ? parsed.followUpQuestions
+      : [];
+
+  return {
+    headline: headline || '先看关键变化',
+    summary: summary || '我会基于当前财务地图，把这次问题拆成几个可执行判断。',
+    cards: fallbackCards.length
+      ? fallbackCards
+      : [{ title: '下一步', body: '请补充一个具体数字或目标，我再帮你重新判断。' }],
+    nextQuestions: nextQuestions.map(normalizeUserVoiceQuestion).filter(Boolean).slice(0, 3),
+  };
+}
+
+function FollowUpAnswerCard({ answer, onAsk }) {
+  return (
+    <article className="followup-answer-card">
+      <small>AI 回答</small>
+      <h3>{answer.headline}</h3>
+      <p>{answer.summary}</p>
+      <div className="followup-card-list">
+        {answer.cards.map((card) => (
+          <section className="followup-point-card" key={`${card.title}-${card.body}`}>
+            <strong>{card.title}</strong>
+            <span>{card.body}</span>
+          </section>
+        ))}
+      </div>
+      {answer.nextQuestions.length > 0 && (
+        <div className="followup-next-questions">
+          {answer.nextQuestions.map((question) => (
+            <button key={question} type="button" onClick={() => onAsk(question)}>
+              {question}
+            </button>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function SupplementExperience({ initialQuestion = '', initialMode = '', modelSettings, onCancel, onComplete, onOpenSettings, plan }) {
   const [stage, setStage] = useState('chat');
   const [step, setStep] = useState('choose');
   const [questionInput, setQuestionInput] = useState('');
@@ -1120,8 +1459,8 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
   const feedRef = useRef(null);
   const timerRef = useRef(null);
   const initialQuestionRef = useRef(false);
+  const initialModeRef = useRef(false);
   const metrics = useMemo(() => buildMetrics(plan), [plan]);
-  const modelConfig = { name: 'DeepSeek', model: 'deepseek-chat' };
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
@@ -1136,8 +1475,15 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
     submitQuestionText(question);
   }, [initialQuestion]);
 
-  function pushMessage(role, text) {
-    setMessages((current) => [...current, { id: crypto.randomUUID(), role, text }]);
+  useEffect(() => {
+    const mode = String(initialMode || '').trim();
+    if (!mode || initialModeRef.current) return;
+    initialModeRef.current = true;
+    chooseMode(mode);
+  }, [initialMode]);
+
+  function pushMessage(role, text, answer = null) {
+    setMessages((current) => [...current, { id: crypto.randomUUID(), role, text, answer }]);
   }
 
   async function submitQuestionText(question) {
@@ -1153,9 +1499,13 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
         question: trimmed,
         plan,
         metrics,
-        recentMessages: messages,
+        recentMessages: messages.map((message) => ({
+          ...message,
+          text: message.text || message.answer?.summary || '',
+        })),
       });
-      pushMessage('ai', result.content);
+      const answer = normalizeFollowUpAnswer(result.content, trimmed);
+      pushMessage('ai', answer.summary, answer);
     } catch (error) {
       pushMessage('ai', error.message);
     } finally {
@@ -1238,13 +1588,29 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
     if (step === 'choose') {
       return (
         <div className="supplement-choice-panel">
-          <div className="input-card-copy">
-            <strong>这次想问什么？</strong>
-            <span>当前使用 {modelConfig.name} / {modelConfig.model}，由测试方服务端统一配置。也可以直接更新结构化数据。</span>
+          <div className="supplement-tool-row" aria-label="快捷补充">
+            <button
+              className="supplement-tool-button"
+              type="button"
+              aria-label="更新资产结构"
+              title="更新资产结构"
+              onClick={() => chooseMode('assets')}
+            >
+              <Radar size={18} />
+            </button>
+            <button
+              className="supplement-tool-button"
+              type="button"
+              aria-label="新增一个目标"
+              title="新增一个目标"
+              onClick={() => chooseMode('goal')}
+            >
+              <Target size={18} />
+            </button>
           </div>
           <form className="ai-question-form" onSubmit={submitQuestion}>
             <input
-              placeholder="直接问：我现在最该先改什么？"
+              placeholder="输入你的问题..."
               value={questionInput}
               onChange={(event) => setQuestionInput(event.target.value)}
             />
@@ -1252,19 +1618,7 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
               <Send size={16} />
             </button>
           </form>
-          {isAskingModel && <p className="model-thinking">正在调用 {modelConfig.name}...</p>}
-          <div className="supplement-choice-grid">
-            <button type="button" onClick={() => chooseMode('assets')}>
-              <Radar size={17} />
-              <span>更新资产结构</span>
-              <small>现金、固定资产、负债变化</small>
-            </button>
-            <button type="button" onClick={() => chooseMode('goal')}>
-              <Target size={17} />
-              <span>新增一个目标</span>
-              <small>买房、教育、养老、消费冲动</small>
-            </button>
-          </div>
+          {isAskingModel && <p className="model-thinking">正在思考...</p>}
         </div>
       );
     }
@@ -1457,7 +1811,6 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
     return (
       <div className="onboarding-shell">
         <section className="onboarding-phone loading-phone">
-          <div className="phone-grip" />
           <div className="loading-card monitor-loading">
             <Radar size={28} />
             <h2>正在重新生成规划页</h2>
@@ -1476,7 +1829,6 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
   return (
     <div className="onboarding-shell">
       <section className="onboarding-phone chat-phone supplement-phone">
-        <div className="phone-grip" />
         <header className="chat-topbar">
           <div className="brand-mark">
             <span>躺</span>
@@ -1488,9 +1840,13 @@ function SupplementExperience({ initialQuestion = '', modelSettings, onCancel, o
         </header>
         <div className="chat-feed" ref={feedRef}>
           {messages.map((message) => (
-            <div className={`chat-bubble ${message.role}`} key={message.id}>
+            <div className={`chat-bubble ${message.role} ${message.answer ? 'structured' : ''}`} key={message.id}>
               {message.role === 'ai' && <Bot size={16} />}
-              <p>{message.text}</p>
+              {message.answer ? (
+                <FollowUpAnswerCard answer={message.answer} onAsk={submitQuestionText} />
+              ) : (
+                <p>{cleanAiText(message.text)}</p>
+              )}
             </div>
           ))}
         </div>
@@ -1561,24 +1917,496 @@ function goalTiming(goal) {
   return `${goal.year} 年后发生`;
 }
 
-function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restartOnboarding, setActiveTab, startSupplement }) {
-  const [questionDraft, setQuestionDraft] = useState('');
-  const aiReport = buildAiReport(plan, metrics);
-  const judgement = aiReport.judgement;
-  const modelConfig = { name: 'DeepSeek', model: 'deepseek-chat' };
-  const progress = clamp(metrics.callableCoverage, 0, 1);
-  const progressValue = Math.round(progress * 100);
-  const monthlyExpense = plan.annualExpense / 12;
-  const cashCushion = monthlyExpense > 0 ? metrics.liquidAssets / monthlyExpense : 0;
-  const cashCushionText = `${Math.max(0, Math.round(cashCushion))}个月`;
-  const yearsText = metrics.yearsNeeded === null ? '80年+' : `${metrics.yearsNeeded}年`;
-  const pressureGoals = [...metrics.goals]
-    .sort((a, b) => b.presentValue - a.presentValue)
-    .slice(0, 3)
+function firstText(...values) {
+  return values.find((value) => typeof value === 'string' && value.trim()) || '';
+}
+
+function valueOrFallback(value, fallback) {
+  const numeric = toNumber(value);
+  return Number.isFinite(numeric) && numeric !== 0 ? numeric : fallback;
+}
+
+function numberOrFallback(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const numeric = toNumber(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function actionButtonLabel(type) {
+  if (type === 'editGoal') return '更改目标';
+  if (type === 'createAccount') return '建立账户';
+  if (type === 'reviewCashflow') return '复核现金流';
+  return '设置计划';
+}
+
+function normalizeActionPoint(action, index, plan, metrics) {
+  const monthlySurplus = Math.max(0, metrics.annualSurplus / 12);
+  const monthlyExpense = Math.max(0, plan.annualExpense / 12);
+  const emergencyTarget = Math.max(metrics.liquidAssets, monthlyExpense * 6);
+  const base = {
+    title: firstText(action?.title, action?.task, index === 0 ? '补足应急资金' : `行动 ${index + 1}`),
+    type: action?.type || (index === 1 ? 'editGoal' : index === 2 ? 'createAccount' : index === 3 ? 'reviewCashflow' : 'setPlan'),
+    reason: firstText(action?.reason, action?.why, '这一步会直接影响长期规划能否稳定执行。'),
+    goal: firstText(action?.goal, action?.plan?.goal, '把建议拆成月度或周度动作，并纳入计划清单。'),
+    buttonLabel: firstText(action?.buttonLabel, actionButtonLabel(action?.type)),
+    plan: action?.plan || {},
+  };
+
+  if (base.plan && Object.keys(base.plan).length) return base;
+
+  if (base.type === 'editGoal') {
+    return {
+      ...base,
+      plan: {
+        current: metrics.maxGoal?.name || '最大目标',
+        target: '重新选择金额或时间',
+        monthlyAction: '本周先保存一个保守版目标',
+        weeklyAction: '和家人确认目标优先级',
+        estimatedTime: '本周完成',
+        checklist: ['确认目标能否延期', '确认目标金额能否降配', '保存新目标后重新生成 AI 结论'],
+      },
+    };
+  }
+
+  if (base.type === 'createAccount') {
+    return {
+      ...base,
+      plan: {
+        current: '尚未单独建账',
+        target: '建立长期专项账户',
+        monthlyAction: monthlySurplus > 0 ? `每月转入 ${money(monthlySurplus * 0.2)}` : '每月固定转入可承受金额',
+        weeklyAction: '每周检查账户是否被日常支出动用',
+        estimatedTime: '本月启动',
+        checklist: ['建立独立账户', '设置自动转入', '每月复核目标进度'],
+      },
+    };
+  }
+
+  if (base.type === 'reviewCashflow') {
+    return {
+      ...base,
+      plan: {
+        current: `月均结余 ${money(monthlySurplus)}`,
+        target: '确认每月真实可投入金额',
+        monthlyAction: '每月底复核收入、支出和还款',
+        weeklyAction: '每周记录一次大额支出',
+        estimatedTime: '连续 4 周',
+        checklist: ['拆出月收入', '拆出月支出', '标记哪些还款已包含在支出中'],
+      },
+    };
+  }
+
+  return {
+    ...base,
+    plan: {
+      current: money(metrics.liquidAssets),
+      target: money(emergencyTarget),
+      monthlyAction: monthlySurplus > 0 ? `每月转入月结余的 10%，约 ${money(monthlySurplus * 0.1)}` : '每月固定转入可承受金额',
+      weeklyAction: '现金流波动时，改为每周小额转入',
+      estimatedTime: '12-18 个月',
+      checklist: ['建立单独账户', '下个发薪日开始自动转入', '每月底复核一次余额'],
+    },
+  };
+}
+
+function normalizeResultAnalysis(aiAnalysis, plan, metrics) {
+  const planningPoolPv = metrics.liquidAssets + metrics.surplusPv;
+  const debtAdjustedAvailablePv = planningPoolPv - plan.liabilities;
+  const totalGoalGapOrSurplus = debtAdjustedAvailablePv - metrics.totalTargetPv;
+  const needGoalGapOrSurplus = debtAdjustedAvailablePv - metrics.needTargetPv;
+  const wantRemainingAfterNeed = Math.max(0, debtAdjustedAvailablePv - metrics.needTargetPv);
+  const wantGoalGapOrSurplus = wantRemainingAfterNeed - metrics.wantTargetPv;
+  const hasTotalGap = totalGoalGapOrSurplus < 0;
+  const rec = aiAnalysis?.reconstructedAssets || {};
+  const core = aiAnalysis?.coreConclusion || {};
+  const coverage = core.coverage || {};
+  const coverageGapOrSurplus = numberOrFallback(coverage.gapOrSurplus, totalGoalGapOrSurplus);
+
+  const fallbackRisks = [
+    {
+      title: '高价值资产不能救急',
+      reason: '固定资产默认不直接用于日常支出和未来目标。',
+      impact: '遇到收入中断或突发支出时，真正能调度的钱会偏薄。',
+      action: '先补足应急资金，再重新测算目标。',
+    },
+    {
+      title: '目标池过满',
+      reason: `全部目标按今天算约 ${money(metrics.totalTargetPv)}。`,
+      impact: hasTotalGap ? `与债务后可规划资产相比，还差 ${money(Math.abs(totalGoalGapOrSurplus))}。` : '当前有余量，但需要继续复核收入稳定性。',
+      action: '先保必要目标，再重排想要目标。',
+    },
+  ];
+
+  const rawActions = Array.isArray(aiAnalysis?.actions?.actionPoints) ? aiAnalysis.actions.actionPoints : [];
+  const normalizedActions = (rawActions.length ? rawActions : [
+    {
+      title: '补足应急资金',
+      type: 'setPlan',
+      reason: '灵活资产不足时，突发支出会打断长期规划。',
+      goal: '按月结余的 10% 自动转入高流动性账户；现金流波动时改为每周小额转入。',
+      buttonLabel: '设置计划',
+    },
+    {
+      title: '调整最大目标',
+      type: 'editGoal',
+      reason: '最大目标往往是长期规划的主要压力源。',
+      goal: '把最大目标做成延后版、降配版和标准版，保存一个更稳的版本。',
+      buttonLabel: '更改目标',
+    },
+    {
+      title: '建立专项账户',
+      type: 'createAccount',
+      reason: '长期目标不能混在日常账户里。',
+      goal: '立刻建立独立账户，按月投入并单独追踪。',
+      buttonLabel: '建立账户',
+    },
+    {
+      title: '复核月结余',
+      type: 'reviewCashflow',
+      reason: '如果还款已经算在支出里，模型不能再重复扣一次。',
+      goal: '拆出月收入、月支出和月还款，确认真实可执行金额。',
+      buttonLabel: '复核现金流',
+    },
+  ]).map((action, index) => normalizeActionPoint(action, index, plan, metrics));
+  const primaryActions = normalizedActions.filter(
+    (action) => action.type !== 'reviewCashflow' && !/复核|现金流|输入/.test(`${action.title}${action.buttonLabel}`),
+  );
+  const actionPoints = (primaryActions.length ? primaryActions : normalizedActions).slice(0, 3);
+
+  return {
+    intro: firstText(
+      aiAnalysis?.intro,
+      '我会先重构你真正可用的资产，再把未来每年能留下的钱，换算成“未来收入的今天价值”，和现在手里的钱放在一起判断。',
+    ),
+    reconstructedAssets: {
+      title: firstText(rec.title, '重构后的真实资产'),
+      narrative: firstText(rec.narrative, rec.summary, '这里不让你看复杂公式，只直接给两个关键结果：先看现在和未来合起来能规划多少钱，再看扣掉已有负债后还剩多少。'),
+      planningPool: {
+        label: firstText(rec.planningPool?.label, '合起来能规划的钱'),
+        value: valueOrFallback(rec.planningPool?.value, planningPoolPv),
+        description: firstText(rec.planningPool?.description, `由现在手里的钱 ${money(metrics.liquidAssets)}，加上未来收入的今天价值 ${money(metrics.surplusPv)} 组成。`),
+      },
+      debtAdjusted: {
+        label: firstText(rec.debtAdjusted?.label, '扣掉已有负债后，真正能用于目标的钱'),
+        value: valueOrFallback(rec.debtAdjusted?.value, debtAdjustedAvailablePv),
+        debtDeducted: valueOrFallback(rec.debtAdjusted?.debtDeducted, plan.liabilities),
+        description: firstText(rec.debtAdjusted?.description, `这个数才是后面判断未来目标够不够用的核心。这里已扣除当前总负债约 ${money(plan.liabilities)}。`),
+      },
+    },
+    coreConclusion: {
+      headline: firstText(
+        core.headline,
+        aiAnalysis?.headline,
+        hasTotalGap ? '全部目标暂时达不成，先保必要目标，再重排想要目标。' : '全部目标目前能覆盖，但安全余量仍要持续复核。',
+      ),
+      insight: firstText(
+        core.insight,
+        core.incomeSupport,
+        core.longTermRisk,
+        hasTotalGap
+          ? `债务后可规划资产约 ${money(debtAdjustedAvailablePv)}，全部目标按今天算约 ${money(metrics.totalTargetPv)}，缺口约 ${money(Math.abs(totalGoalGapOrSurplus))}。`
+          : `债务后可规划资产约 ${money(debtAdjustedAvailablePv)}，全部目标按今天算约 ${money(metrics.totalTargetPv)}，当前有 ${money(totalGoalGapOrSurplus)} 余量。`,
+      ),
+      coverage: {
+        available: valueOrFallback(coverage.available, debtAdjustedAvailablePv),
+        totalGoal: valueOrFallback(coverage.totalGoal, metrics.totalTargetPv),
+        gapOrSurplus: coverageGapOrSurplus,
+        status: coverageGapOrSurplus < 0 ? 'gap' : 'surplus',
+      },
+      needGoal: {
+        label: firstText(core.needGoal?.label, '必要目标'),
+        value: valueOrFallback(core.needGoal?.value, metrics.needTargetPv),
+        status: core.needGoal?.status || (needGoalGapOrSurplus >= 0 ? 'covered' : 'gap'),
+        description: firstText(
+          core.needGoal?.description,
+          needGoalGapOrSurplus >= 0 ? `必要目标可以守住，但缓冲约 ${money(needGoalGapOrSurplus)}。` : `必要目标仍差约 ${money(Math.abs(needGoalGapOrSurplus))}。`,
+        ),
+      },
+      wantGoal: {
+        label: firstText(core.wantGoal?.label, '想要目标'),
+        value: valueOrFallback(core.wantGoal?.value, metrics.wantTargetPv),
+        status: core.wantGoal?.status || (wantGoalGapOrSurplus >= 0 ? 'covered' : 'gap'),
+        description: firstText(
+          core.wantGoal?.description,
+          wantGoalGapOrSurplus >= 0 ? `想要目标也能覆盖，但需要保持收入稳定。` : `想要目标还差约 ${money(Math.abs(wantGoalGapOrSurplus))}，需要延期、降配或重新排序。`,
+        ),
+      },
+    },
+    risks: (Array.isArray(aiAnalysis?.risks) && aiAnalysis.risks.length ? aiAnalysis.risks : fallbackRisks)
+      .slice(0, 3)
+      .map((risk) => ({
+        title: firstText(risk.title, '长期规划风险'),
+        reason: firstText(risk.reason, risk.explanation, risk.evidence, '这个风险来自当前资产、负债和目标结构。'),
+        impact: firstText(risk.impact, '它会挤压目标覆盖余量。'),
+        action: firstText(risk.action, '先调整最关键的输入，再重新测算。'),
+      })),
+    actionPoints,
+    followUpQuestions:
+      Array.isArray(aiAnalysis?.followUpQuestions) && aiAnalysis.followUpQuestions.length
+        ? aiAnalysis.followUpQuestions.slice(0, 3)
+        : [
+            '如果收入下降 20%，必要目标还能守住吗？',
+            '换房目标延期到 10 年后会怎样？',
+            '先补应急金，计划清单怎么排？',
+          ],
+  };
+}
+
+function MoneyValue({ value }) {
+  const text = money(value);
+  const match = text.match(/^(.+?)(万|亿)$/);
+  if (!match) return text;
+  return (
+    <>
+      {match[1]}
+      <small>{match[2]}</small>
+    </>
+  );
+}
+
+function goalRowsForPriority(metrics, priority) {
+  return metrics.goals
+    .filter((goal) => goal.priority === priority)
     .map((goal) => ({
-      ...goal,
-      share: metrics.totalTargetPv > 0 ? goal.presentValue / metrics.totalTargetPv : 0,
+      id: goal.id,
+      name: goal.name,
+      value: goal.presentValue,
     }));
+}
+
+function fallbackGoalRow(label, value) {
+  return value > 0 ? [{ id: label, name: label, value }] : [];
+}
+
+function GoalValueList({ goals, mark = 'check' }) {
+  return (
+    <div className="goal-value-list core-ledger-details">
+      {goals.map((goal) => (
+        <div className="goal-value-row" key={goal.id || goal.name}>
+          {mark === 'check' ? <i className="goal-check" /> : <i className="goal-choice-mark">?</i>}
+          <span>{goal.name}</span>
+          <em>{money(goal.value)}</em>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CoreConclusionCard({ analysis, metrics }) {
+  const available = analysis.coverage.available;
+  const totalGoal = analysis.coverage.totalGoal;
+  const needTotal = analysis.needGoal.value;
+  const wantTotal = analysis.wantGoal.value;
+  const totalGap = available - totalGoal;
+  const needGap = available - needTotal;
+  const wantGap = available - needTotal - wantTotal;
+  const needGoals = goalRowsForPriority(metrics, 'need');
+  const wantGoals = goalRowsForPriority(metrics, 'want');
+  const safeNeedGoals = needGoals.length ? needGoals : fallbackGoalRow('必要目标', needTotal);
+  const safeWantGoals = wantGoals.length ? wantGoals : fallbackGoalRow('想要目标', wantTotal);
+  const status = totalGap >= 0 ? 'all-covered' : needGap >= 0 ? 'need-covered' : 'need-gap';
+
+  return (
+    <section className="standard-stack">
+      <div className="core-state-list">
+        <article className="core-state-card is-current">
+          <h4>{analysis.headline}</h4>
+          <p>{analysis.insight}</p>
+
+          {status === 'all-covered' && (
+            <div className="core-subsection">
+              <div className="core-ledger-total">
+                <strong>全部目标折现总额</strong>
+                <span>{money(totalGoal)}</span>
+              </div>
+              <GoalValueList goals={[...safeNeedGoals, ...safeWantGoals]} mark="check" />
+              <div className="core-ledger-result">
+                <span>覆盖后盈余</span>
+                <strong>{money(Math.max(0, totalGap))}</strong>
+              </div>
+            </div>
+          )}
+
+          {status === 'need-covered' && (
+            <>
+              <div className="core-subsection">
+                <div className="core-ledger-total">
+                  <strong>必要目标折现总额</strong>
+                  <span>{money(needTotal)}</span>
+                </div>
+                <GoalValueList goals={safeNeedGoals} mark="check" />
+                <div className="core-ledger-result">
+                  <span>必要目标覆盖余量</span>
+                  <strong>{money(Math.max(0, needGap))}</strong>
+                </div>
+              </div>
+              {wantTotal > 0 && (
+                <div className="core-subsection">
+                  <div className="core-ledger-total">
+                    <strong>想要目标折现总额</strong>
+                    <span>{money(wantTotal)}</span>
+                  </div>
+                  <GoalValueList goals={safeWantGoals} mark="question" />
+                  <div className="core-ledger-result-stack">
+                    <div className="core-ledger-result">
+                      <span>扣掉必要目标后的余量</span>
+                      <strong>{money(Math.max(0, needGap))}</strong>
+                    </div>
+                    <div className="core-ledger-result deficit">
+                      <span>想要目标总缺口</span>
+                      <strong>{money(Math.max(0, -wantGap))}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {status === 'need-gap' && (
+            <div className="core-subsection">
+              <div className="core-ledger-total">
+                <strong>必要目标折现总额</strong>
+                <span>{money(needTotal)}</span>
+              </div>
+              <GoalValueList goals={safeNeedGoals} mark="question" />
+              <div className="core-ledger-result deficit">
+                <span>必要目标缺口</span>
+                <strong>{money(Math.abs(needGap))}</strong>
+              </div>
+            </div>
+          )}
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function TypewriterText({ text, as: Component = 'p', className = '', onDone }) {
+  const [displayed, setDisplayed] = useState('');
+  const onDoneRef = useRef(onDone);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fullText = String(text || '');
+    setDisplayed('');
+
+    if (!fullText) {
+      onDoneRef.current?.();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    let index = 0;
+    const timer = window.setInterval(() => {
+      if (cancelled) return;
+      index += 1;
+      setDisplayed(fullText.slice(0, index));
+      if (index >= fullText.length) {
+        window.clearInterval(timer);
+        onDoneRef.current?.();
+      }
+    }, 22);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [text]);
+
+  return <Component className={className}>{displayed}</Component>;
+}
+
+function TypedResultBubble({ active, label, text, children, onDone }) {
+  const [typed, setTyped] = useState(false);
+
+  useEffect(() => {
+    setTyped(false);
+  }, [text, active]);
+
+  if (!active) return null;
+
+  return (
+    <article className="result-bubble ai result-typed-bubble">
+      <small>{label}</small>
+      <TypewriterText
+        text={text}
+        onDone={() => {
+          setTyped(true);
+          onDone?.();
+        }}
+      />
+      {typed && children}
+    </article>
+  );
+}
+
+function PlanningPage({ metrics, modelSettings, plan, restartOnboarding, setActiveTab, startSupplement }) {
+  const [questionDraft, setQuestionDraft] = useState('');
+  const [analysisState, setAnalysisState] = useState({ status: 'idle', data: null, error: '' });
+  const [analysisStep, setAnalysisStep] = useState(0);
+  const [activePlanAction, setActivePlanAction] = useState(null);
+  const [savedActionPlans, setSavedActionPlans] = useState([]);
+  const [isPageMenuOpen, setIsPageMenuOpen] = useState(false);
+  const analysisKey = useMemo(
+    () =>
+      JSON.stringify({
+        liquidAssets: plan.liquidAssets,
+        lockedAssets: plan.lockedAssets,
+        liabilities: plan.liabilities,
+        annualIncome: plan.annualIncome,
+        annualExpense: plan.annualExpense,
+        workYears: plan.workYears,
+        discountRate: plan.discountRate,
+        goals: plan.goals,
+      }),
+    [plan],
+  );
+  const aiAnalysis = analysisState.data;
+  const normalizedAnalysis = useMemo(
+    () => (aiAnalysis ? normalizeResultAnalysis(aiAnalysis, plan, metrics) : null),
+    [aiAnalysis, plan, metrics],
+  );
+  const analysisFollowUpQuestions = normalizedAnalysis?.followUpQuestions
+    ?.map(normalizeUserVoiceQuestion)
+    .filter(Boolean)
+    .slice(0, 3);
+  const dynamicQuestions =
+    analysisFollowUpQuestions?.length
+      ? analysisFollowUpQuestions
+      : [
+          '我先保必要目标，想要目标还能剩多少？',
+          '如果我未来收入下降 20%，规划会怎样？',
+          '我先补应急金，计划清单怎么排？',
+        ];
+
+  useEffect(() => {
+    let cancelled = false;
+    setAnalysisState({ status: 'loading', data: null, error: '' });
+    setAnalysisStep(0);
+    setActivePlanAction(null);
+    setSavedActionPlans([]);
+
+    callManagedAnalysis({ plan, metrics })
+      .then((result) => {
+        if (!cancelled) {
+          setAnalysisState({ status: 'ready', data: result.analysis, error: '' });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAnalysisState({ status: 'error', data: null, error: error.message || 'AI 分析生成失败' });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [analysisKey, metrics]);
 
   function submitQuestion(event) {
     event.preventDefault();
@@ -1591,180 +2419,229 @@ function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restart
     startSupplement(question);
   }
 
+  function saveActionPlan() {
+    if (!activePlanAction) return;
+    setSavedActionPlans((current) => {
+      const next = current.filter((item) => item.title !== activePlanAction.title);
+      return [{ ...activePlanAction, savedAt: Date.now() }, ...next].slice(0, 3);
+    });
+    setActivePlanAction(null);
+  }
+
+  function openSection(section) {
+    setIsPageMenuOpen(false);
+    setActiveTab(section);
+  }
+
   return (
     <section className="screen result-screen">
       <section className="result-chat-shell">
-        <header className="result-topbar">
-          <div className="result-person">
-            <div className="result-avatar">姐</div>
-            <div>
-              <strong>知心姐姐</strong>
-              <span>{modelConfig.name} · {modelConfig.model}</span>
-            </div>
+        <header className="result-topbar result-topbar-minimal">
+          <div className="result-menu">
+            <button
+              className="result-menu-trigger"
+              type="button"
+              aria-label="打开规划菜单"
+              aria-expanded={isPageMenuOpen}
+              onClick={() => setIsPageMenuOpen((current) => !current)}
+            >
+              ...
+            </button>
+            {isPageMenuOpen && (
+              <div className="result-menu-popover" role="menu">
+                <button type="button" role="menuitem" onClick={() => openSection('asset')}>
+                  <PiggyBank size={16} />
+                  <span>资产</span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => openSection('goal')}>
+                  <Target size={16} />
+                  <span>目标</span>
+                </button>
+                <button type="button" role="menuitem" onClick={() => openSection('planning')}>
+                  <Home size={16} />
+                  <span>计划</span>
+                </button>
+              </div>
+            )}
           </div>
-          <button className="result-pill" type="button" onClick={openModelSettings}>
-            <Check size={13} />
-            AI 已连接
-          </button>
         </header>
 
         <div className="result-chat-feed">
           <article className="result-bubble user">
-            <p>我把家里的资产、收入、支出和未来目标都填完了。你直接告诉我，我现在到底能不能躺？</p>
+            <p>我把家里的资产、收入、支出和未来目标都填完了。你直接告诉我，长期规划站不站得住。</p>
           </article>
 
           <article className="result-bubble ai compact">
-            <small>知心姐姐</small>
-            <p>我先接住你这个问题：你真正想知道的不是账上有多少钱，而是这个家庭有没有一条稳稳的退路。</p>
+            <small>分析说明</small>
+            <p>
+              我会先重构你真正可用的资产，再把未来每年能留下的钱，换算成“未来收入的今天价值”，和现在手里的钱放在一起判断。
+            </p>
           </article>
 
-          <article className="result-bubble ai">
-            <small>一句话承接</small>
-            <p>{judgement.leadIn}</p>
-          </article>
-
-          <article className="result-bubble ai">
-            <small>核心结论</small>
-            <p>{judgement.reason}</p>
-            <section className="result-card result-hero-card">
-              <div className="result-card-head">
-                <div>
-                  <strong>今天的判断</strong>
-                  <span>基于当前目标和保守假设</span>
+          {analysisState.status === 'loading' && (
+            <article className="result-bubble ai result-loading">
+              <small>正在整理</small>
+              <p>我正在把你的家庭财务地图拆成可规划资产、目标压力和行动顺序。</p>
+              <section className="result-card result-loading-card">
+                <div className="typing-loader" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
                 </div>
-                <em>{judgement.pressure.title}</em>
-              </div>
-              <div className="result-verdict">
-                <b>{metrics.verdict.title}</b>
-                <span>{judgement.verdict}</span>
-              </div>
-            </section>
-          </article>
-
-          <article className="result-bubble ai">
-            <small>核心指标支撑</small>
-            <p>我先不讲一堆公式，只看会影响判断的几个指标。它们共同说明：方向可以讨论，但安全余量还需要被托住。</p>
-            <section className="result-card">
-              <div className="progress-head">
-                <span>能躺进度</span>
-                <b>{progressValue}%</b>
-              </div>
-              <div className="result-track">
-                <i style={{ width: `${progressValue}%` }} />
-              </div>
-              <div className="metric-grid">
-                <div className="metric"><span>可调用覆盖</span><strong>{percent(metrics.callableCoverage)}</strong></div>
-                <div className="metric"><span>当前缺口</span><strong>{metrics.gap > 0 ? money(metrics.gap) : '无缺口'}</strong></div>
-                <div className="metric"><span>现金垫</span><strong>{cashCushionText}</strong></div>
-              </div>
-              <div className="metric-grid">
-                <div className="metric"><span>预计还需</span><strong>{yearsText}</strong></div>
-                <div className="metric"><span>月结余目标</span><strong>{judgement.shortTermPlan[2]?.value.replace('至少 ', '')}</strong></div>
-                <div className="metric"><span>年度可规划</span><strong>{money(Math.max(0, metrics.annualSurplus))}</strong></div>
-              </div>
-              <details className="formula-drawer">
-                <summary>查看精算指标</summary>
-                <div className="formula-list">
-                  {aiReport.ratios.slice(0, 4).map((ratio) => (
-                    <div key={ratio.name}>
-                      <span>{ratio.name}</span>
-                      <strong>{ratio.value}</strong>
-                    </div>
-                  ))}
+                <div className="result-loading-steps">
+                  <span>重构真实资产</span>
+                  <span>换算未来收入的今天价值</span>
+                  <span>判断目标和风险</span>
                 </div>
-              </details>
-            </section>
-          </article>
+              </section>
+            </article>
+          )}
 
-          <article className="result-bubble ai">
-            <small>压力来源</small>
-            <p>{judgement.pressure.impact}</p>
-            <section className="result-card">
-              <div className="combined-title">
-                <strong>{judgement.pressure.title}</strong>
-                <span>{judgement.pressure.level}</span>
-              </div>
-              <div className="bar-row">
-                <div className="bar-label"><strong>资源</strong><span>可调用口径</span></div>
-                <div className="mini-track"><i style={{ width: `${Math.min(100, progressValue)}%` }} /></div>
-                <b>{money(metrics.callableResourcesPv)}</b>
-              </div>
-              <div className="bar-row">
-                <div className="bar-label"><strong>目标</strong><span>长期需求</span></div>
-                <div className="mini-track"><i className="target" style={{ width: '100%' }} /></div>
-                <b>{money(metrics.totalTargetPv)}</b>
-              </div>
-              {pressureGoals.map((goal) => (
-                <div className="pressure-row" key={goal.id}>
-                  <strong>{goal.name}</strong>
-                  <span><i style={{ width: `${Math.max(8, Math.round(goal.share * 100))}%` }} /></span>
-                  <b>{percent(goal.share)}</b>
+          {analysisState.status === 'error' && (
+            <article className="result-bubble ai">
+              <small>AI 分析暂时失败</small>
+              <p>{analysisState.error}</p>
+              <section className="result-card">
+                <div className="choice-buttons">
+                  <button className="primary" type="button" onClick={() => startSupplement('请基于我的家庭财务画像，重新生成结构化分析。')}>重新生成分析</button>
+                  <button className="secondary" type="button" onClick={() => setActiveTab('asset')}>检查输入</button>
                 </div>
-              ))}
-              <div className="timeline">
-                <div><b>现在</b><span>稳住现金垫</span></div>
-                <div><b>{metrics.maxGoal ? goalTiming(metrics.maxGoal) : '先补目标'}</b><span>{metrics.maxGoal?.name || '目标待补充'}</span></div>
-                <div><b>{metrics.latestGoalYear || 0}年</b><span>最远目标边界</span></div>
-              </div>
-            </section>
-          </article>
+              </section>
+            </article>
+          )}
 
-          <article className="result-bubble ai">
-            <small>我的长期建议</small>
-            <p>{judgement.longTermAdvice.recommendation}</p>
-            <section className="result-card">
-              <div className="setting-row">
-                <span>调整目标</span>
-                <strong>{judgement.longTermAdvice.target}</strong>
-              </div>
-              <div className="setting-row">
-                <span>第一版动作</span>
-                <strong>{metrics.callableCoverage >= 1 ? '每月复核可调用资产' : '延后 3 年 + 降低 20% 预算'}</strong>
-              </div>
-              <div className="impact-line">
-                <span>为什么先动这里</span>
-                <b>{judgement.longTermAdvice.impact}</b>
-              </div>
-              <div className="result-track">
-                <i style={{ width: `${Math.min(100, Math.max(progressValue, Math.round(clamp(metrics.bookCoverage, 0, 1) * 100)))}%` }} />
-              </div>
-              <div className="choice-buttons">
-                <button className="primary" type="button" onClick={() => setActiveTab('goal')}>调整目标</button>
-                <button className="secondary" type="button" onClick={() => startSupplement()}>继续问 AI</button>
-              </div>
-            </section>
-          </article>
-
-          <article className="result-bubble ai">
-            <small>今年的短期计划</small>
-            <p>长期目标要靠今年的执行来托住。先把今年拆成一个能复盘的计划：每周看一次偏差，每月底看长期进度有没有变形。</p>
-            <section className="result-card">
-              <div className="plan-grid">
-                {judgement.shortTermPlan.map((item) => (
-                  <div className="setting-row" key={item.label}>
-                    <span>{item.label}</span>
-                    <strong>{item.value}</strong>
+          {normalizedAnalysis && (
+            <>
+              <TypedResultBubble
+                active={analysisStep >= 0}
+                label={normalizedAnalysis.reconstructedAssets.title}
+                text={normalizedAnalysis.reconstructedAssets.narrative}
+                onDone={() => setAnalysisStep((current) => Math.max(current, 1))}
+              >
+                <section className="standard-stack">
+                  <div className="standard-result-card">
+                    <span className="standard-card-label">{normalizedAnalysis.reconstructedAssets.planningPool.label}</span>
+                    <strong className="standard-card-value">
+                      <MoneyValue value={normalizedAnalysis.reconstructedAssets.planningPool.value} />
+                    </strong>
+                    <p className="standard-card-explain">
+                      这笔钱表示还没扣负债前，当前和未来合起来能规划的总额，由当前可动用资产 {money(metrics.liquidAssets)} + 未来收入今天价值 {money(metrics.surplusPv)} 组成。
+                    </p>
                   </div>
-                ))}
-              </div>
-              <div className="choice-buttons">
-                <button className="primary" type="button" onClick={() => startSupplement()}>确认并继续监测</button>
-                <button className="secondary" type="button" onClick={() => setActiveTab('asset')}>调整资产</button>
-              </div>
-            </section>
-          </article>
+                  <div className="standard-result-card emphasis">
+                    <span className="standard-card-label">{normalizedAnalysis.reconstructedAssets.debtAdjusted.label}</span>
+                    <strong className="standard-card-value">
+                      <MoneyValue value={normalizedAnalysis.reconstructedAssets.debtAdjusted.value} />
+                    </strong>
+                    <p className="standard-card-explain">
+                      这笔钱表示扣掉已有负债后，真正能用于未来目标的金额，由 {money(normalizedAnalysis.reconstructedAssets.planningPool.value)} - 当前总负债 {money(normalizedAnalysis.reconstructedAssets.debtAdjusted.debtDeducted)} = {money(normalizedAnalysis.reconstructedAssets.debtAdjusted.value)} 得到。
+                    </p>
+                  </div>
+                </section>
+              </TypedResultBubble>
+
+              <TypedResultBubble
+                active={analysisStep >= 1}
+                label="核心结论"
+                text={normalizedAnalysis.coreConclusion.insight}
+                onDone={() => setAnalysisStep((current) => Math.max(current, 2))}
+              >
+                <CoreConclusionCard analysis={normalizedAnalysis.coreConclusion} metrics={metrics} />
+              </TypedResultBubble>
+
+              <TypedResultBubble
+                active={analysisStep >= 2}
+                label="风险"
+                text="下面这些风险不是单个数字的问题，而是资产重构后暴露出来的长期压力。"
+                onDone={() => setAnalysisStep((current) => Math.max(current, 3))}
+              >
+                <section className="standard-risk-list">
+                  {normalizedAnalysis.risks.map((risk) => (
+                    <article className="standard-risk-card" key={risk.title}>
+                      <strong>风险：{risk.title}</strong>
+                      <p>原因：{risk.reason}</p>
+                    </article>
+                  ))}
+                </section>
+              </TypedResultBubble>
+
+              <TypedResultBubble
+                active={analysisStep >= 3}
+                label="行动建议"
+                text="先把建议变成月度或周度动作，再决定是设置计划、调整目标，还是建立专项账户。"
+                onDone={() => setAnalysisStep((current) => Math.max(current, 4))}
+              >
+                <section className="standard-stack">
+                  <div className="standard-action-scroll">
+                    {normalizedAnalysis.actionPoints.map((action, index) => (
+                      <article className="standard-action-card" key={action.title}>
+                        <div className="standard-action-head">
+                          <small className="standard-action-step">{String(index + 1).padStart(2, '0')}</small>
+                          <strong>{action.title}</strong>
+                          <button type="button" onClick={() => setActivePlanAction(action)}>
+                            {action.buttonLabel}
+                          </button>
+                        </div>
+                        <div className="standard-action-content">
+                          <div className="standard-action-line">
+                            <span>原因</span>
+                            <p>{action.reason}</p>
+                          </div>
+                          <div className="standard-action-line">
+                            <span>目标</span>
+                            <p>{action.goal}</p>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                  {savedActionPlans.length > 0 && (
+                    <div className="saved-plan-list">
+                      <span>已生成计划清单</span>
+                      {savedActionPlans.map((item) => (
+                        <div key={item.title}>
+                          <Check size={14} />
+                          <strong>{item.title}</strong>
+                          <p>{item.plan?.monthlyAction || item.goal}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </TypedResultBubble>
+            </>
+          )}
         </div>
 
         <footer className="result-composer">
-          <div className="chips">
-            <button type="button" onClick={() => startSupplement('为什么我的压力偏大？请按资产、现金流、目标三个角度解释。')}>为什么压力偏大？</button>
-            <button type="button" onClick={() => setActiveTab('goal')}>长期目标还能怎么调？</button>
-            <button type="button" onClick={() => startSupplement('请把今年的计划拆成本周能开始执行的 3 个动作。')}>本周计划怎么执行？</button>
-            <button type="button" onClick={restartOnboarding}>重新问诊</button>
+          <div className="composer-toolbar" aria-label="追问工具">
+            <div className="composer-tools">
+              <button
+                type="button"
+                aria-label="更新资产结构"
+                title="更新资产结构"
+                onClick={() => startSupplement('', 'assets')}
+              >
+                <Radar size={17} />
+              </button>
+              <button
+                type="button"
+                aria-label="新增一个目标"
+                title="新增一个目标"
+                onClick={() => startSupplement('', 'goal')}
+              >
+                <Target size={17} />
+              </button>
+            </div>
+            <div className="chips">
+              {dynamicQuestions.map((question) => (
+                <button key={question} type="button" onClick={() => startSupplement(question)}>{question}</button>
+              ))}
+            </div>
           </div>
           <form className="result-input-shell" onSubmit={submitQuestion}>
             <input
-              placeholder="继续问知心姐姐..."
+              placeholder="输入你的问题..."
               value={questionDraft}
               onChange={(event) => setQuestionDraft(event.target.value)}
             />
@@ -1775,27 +2652,315 @@ function PlanningPage({ metrics, modelSettings, openModelSettings, plan, restart
         </footer>
       </section>
 
-      <section className="result-workspace-links">
-        <button type="button" onClick={() => setActiveTab('asset')}>
-          <PiggyBank size={18} />
-          <span>我的资产</span>
-          <strong>{money(metrics.netWorth)}</strong>
-          <ChevronRight size={16} />
-        </button>
-        <button type="button" onClick={() => setActiveTab('goal')}>
-          <Target size={18} />
-          <span>我的目标</span>
-          <strong>{money(metrics.totalTargetPv)}</strong>
-          <ChevronRight size={16} />
-        </button>
-        <button className="ask-ai-card" type="button" onClick={() => startSupplement()}>
-          <Sparkles size={18} />
-          <span>AI 监测</span>
-          <strong>补充情况、测试决定、调整目标</strong>
-          <ChevronRight size={16} />
+      {activePlanAction && (
+        <div className="result-plan-modal" role="dialog" aria-modal="true">
+          <section className="result-plan-sheet">
+            <button className="modal-close" type="button" onClick={() => setActivePlanAction(null)}>
+              ×
+            </button>
+            <small>计划清单</small>
+            <h3>{activePlanAction.title}</h3>
+            <p>{activePlanAction.reason}</p>
+            <div className="plan-detail-grid">
+              <div>
+                <span>当前状态</span>
+                <strong>{activePlanAction.plan?.current || '待确认'}</strong>
+              </div>
+              <div>
+                <span>目标状态</span>
+                <strong>{activePlanAction.plan?.target || activePlanAction.goal}</strong>
+              </div>
+              <div>
+                <span>月度动作</span>
+                <strong>{activePlanAction.plan?.monthlyAction || '每月复核并执行一次'}</strong>
+              </div>
+              <div>
+                <span>周度动作</span>
+                <strong>{activePlanAction.plan?.weeklyAction || '每周做一次轻量检查'}</strong>
+              </div>
+              <div>
+                <span>预计周期</span>
+                <strong>{activePlanAction.plan?.estimatedTime || '连续 4 周'}</strong>
+              </div>
+            </div>
+            <div className="modal-checklist">
+              {(activePlanAction.plan?.checklist || ['确认目标', '设置提醒', '月底复核']).map((item) => (
+                <label key={item}>
+                  <input type="checkbox" />
+                  <span>{item}</span>
+                </label>
+              ))}
+            </div>
+            <div className="choice-buttons">
+              <button className="primary" type="button" onClick={saveActionPlan}>生成计划清单</button>
+              <button
+                className="secondary"
+                type="button"
+                onClick={() => {
+                  setActivePlanAction(null);
+                  if (activePlanAction.type === 'editGoal') setActiveTab('goal');
+                }}
+              >
+                {activePlanAction.type === 'editGoal' ? '去目标页' : '稍后处理'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CoachPage() {
+  const [selectedScenarioId, setSelectedScenarioId] = useState(coachScenarios[0].id);
+  const [observerMode, setObserverMode] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [userNote, setUserNote] = useState('');
+  const [messages, setMessages] = useState(() => [
+    {
+      id: crypto.randomUUID(),
+      role: 'ai',
+      text: '我会先确认你要配置什么，再观察当前页面状态，只给你下一步该做的动作。敏感信息你自己确认，我不会要求你把密钥发出来。',
+    },
+  ]);
+  const activeScenario = coachScenarios.find((scenario) => scenario.id === selectedScenarioId) || coachScenarios[0];
+  const checkpoint = activeScenario.checkpoints[stepIndex];
+  const progress = Math.round(((stepIndex + 1) / activeScenario.checkpoints.length) * 100);
+
+  function pushMessage(role, text) {
+    setMessages((current) => [...current, { id: crypto.randomUUID(), role, text }]);
+  }
+
+  function chooseScenario(id) {
+    const nextScenario = coachScenarios.find((scenario) => scenario.id === id) || coachScenarios[0];
+    setSelectedScenarioId(nextScenario.id);
+    setStepIndex(0);
+    setObserverMode(false);
+    setMessages([
+      {
+        id: crypto.randomUUID(),
+        role: 'ai',
+        text: `我们先跑「${nextScenario.name}」。我会按 ${nextScenario.checkpoints.length} 个节点陪你走，每次只推进一个可验证动作。`,
+      },
+    ]);
+  }
+
+  function toggleObserverMode() {
+    setObserverMode((current) => {
+      const next = !current;
+      pushMessage(
+        'ai',
+        next
+          ? '观察模式已开启。真实接入时这里会读取屏幕/浏览器状态；当前原型用任务节点模拟观察结果。'
+          : '观察模式已暂停。你可以继续描述当前页面，我会按文字帮你判断。',
+      );
+      return next;
+    });
+  }
+
+  function advanceStep() {
+    if (stepIndex >= activeScenario.checkpoints.length - 1) {
+      pushMessage('ai', `「${activeScenario.name}」已经走到最后一个验证点。现在适合做一次完整复测，再把成功截图或日志存档。`);
+      return;
+    }
+
+    const nextIndex = stepIndex + 1;
+    setStepIndex(nextIndex);
+    pushMessage('user', '我完成了这一步。');
+    pushMessage('ai', `好，进入「${activeScenario.checkpoints[nextIndex].title}」。先看页面是否符合观察结果，再做下一步动作。`);
+  }
+
+  function reportStuck() {
+    pushMessage('user', '我卡住了。');
+    pushMessage('ai', `先停在当前页面，不要连续乱点。请看有没有报错、红色提示或保存按钮置灰；如果有，把提示文字描述给我，我会判断是权限、路径、网络还是填写格式问题。`);
+  }
+
+  function resetRun() {
+    setStepIndex(0);
+    setObserverMode(false);
+    setUserNote('');
+    setMessages([
+      {
+        id: crypto.randomUUID(),
+        role: 'ai',
+        text: `已重置「${activeScenario.name}」。我们从第一个节点重新走，这次每一步都先验证再继续。`,
+      },
+    ]);
+  }
+
+  function submitNote(event) {
+    event.preventDefault();
+    const note = userNote.trim();
+    if (!note) return;
+    pushMessage('user', note);
+    setUserNote('');
+
+    if (/报错|失败|打不开|404|403|500|error/i.test(note)) {
+      pushMessage('ai', `这像是失败态。先不要改多处配置，只回到「${checkpoint.title}」这一项检查：${checkpoint.verify}`);
+      return;
+    }
+
+    if (/key|密钥|token|密码|验证码/i.test(note)) {
+      pushMessage('ai', '这里涉及敏感信息。你自己在页面里粘贴和确认即可，不要把完整内容发给我。完成后只告诉我“已保存”或“提示失败”。');
+      return;
+    }
+
+    pushMessage('ai', `我会把你看到的状态对齐到当前节点。下一步建议：${checkpoint.nextAction}`);
+  }
+
+  return (
+    <Screen
+      eyebrow="陪跑"
+      title="配置陪跑 agent"
+      subtitle="把安装、授权、部署这些卡人的流程拆成下一步、风险点和验证结果"
+      action={<Monitor size={20} />}
+    >
+      <section className="coach-hero">
+        <div>
+          <span className="coach-status-line">
+            <Sparkles size={14} />
+            可交互 MVP
+          </span>
+          <h2>你只负责确认关键选择</h2>
+          <p>Agent 负责读当前状态、判断下一步、发现风险并把失败恢复路径讲清楚。</p>
+        </div>
+        <button className={observerMode ? 'coach-observe-button active' : 'coach-observe-button'} type="button" onClick={toggleObserverMode}>
+          {observerMode ? <Eye size={18} /> : <Play size={18} />}
+          <span>{observerMode ? '观察中' : '开始观察'}</span>
         </button>
       </section>
-    </section>
+
+      <Panel title="配置任务" icon={<Settings size={18} />}>
+        <div className="coach-scenario-grid">
+          {coachScenarios.map((scenario) => (
+            <button
+              className={scenario.id === activeScenario.id ? 'active' : ''}
+              key={scenario.id}
+              type="button"
+              onClick={() => chooseScenario(scenario.id)}
+            >
+              <strong>{scenario.name}</strong>
+              <span>{scenario.summary}</span>
+            </button>
+          ))}
+        </div>
+      </Panel>
+
+      <section className="panel coach-live-panel">
+        <div className="panel-title">
+          <div>
+            <Radar size={18} />
+            <h3>实时状态</h3>
+          </div>
+          <span>{progress}%</span>
+        </div>
+        <div className="coach-progress">
+          <i style={{ width: `${progress}%` }} />
+        </div>
+        <div className="coach-step-list">
+          {activeScenario.checkpoints.map((item, index) => (
+            <button
+              className={`${index === stepIndex ? 'active' : ''} ${index < stepIndex ? 'done' : ''}`}
+              key={item.title}
+              type="button"
+              onClick={() => setStepIndex(index)}
+            >
+              {index < stepIndex ? <Check size={15} /> : <span>{index + 1}</span>}
+              <strong>{item.title}</strong>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="coach-observation-grid">
+        <section className="panel coach-observation-panel">
+          <div className="panel-title">
+            <div>
+              <Eye size={18} />
+              <h3>我看到的状态</h3>
+            </div>
+            <span>{observerMode ? '已授权' : '待授权'}</span>
+          </div>
+          <p>{observerMode ? checkpoint.observed : '开启观察后，Agent 会把当前屏幕状态归类到一个配置节点。当前原型先用模拟状态展示。'}</p>
+          <div className="coach-screen-frame">
+            <div className="coach-browser-bar">
+              <i />
+              <i />
+              <i />
+              <span>{activeScenario.summary}</span>
+            </div>
+            <div className="coach-screen-body">
+              <b>{checkpoint.title}</b>
+              <span>{observerMode ? checkpoint.observed : '等待屏幕观察授权'}</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel coach-next-panel">
+          <div className="panel-title">
+            <div>
+              <MousePointer2 size={18} />
+              <h3>下一步</h3>
+            </div>
+          </div>
+          <div className="coach-action-block">
+            <strong>{checkpoint.nextAction}</strong>
+            <span>{checkpoint.verify}</span>
+          </div>
+          <div className="coach-risk-block">
+            <AlertTriangle size={17} />
+            <p>{checkpoint.risk}</p>
+          </div>
+          <div className="coach-action-row">
+            <button className="primary-button" type="button" onClick={advanceStep}>
+              <Check size={17} />
+              我完成了
+            </button>
+            <button className="done-button" type="button" onClick={reportStuck}>
+              我卡住了
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <section className="panel coach-chat-panel">
+        <div className="panel-title">
+          <div>
+            <Bot size={18} />
+            <h3>陪跑对话</h3>
+          </div>
+          <button type="button" onClick={resetRun}>
+            <RefreshCcw size={14} />
+            重来
+          </button>
+        </div>
+        <div className="coach-message-list">
+          {messages.map((message) => (
+            <div className={`coach-message ${message.role}`} key={message.id}>
+              <p>{message.text}</p>
+            </div>
+          ))}
+        </div>
+        <form className="result-input-shell" onSubmit={submitNote}>
+          <input
+            placeholder="描述你现在看到的页面或报错..."
+            value={userNote}
+            onChange={(event) => setUserNote(event.target.value)}
+          />
+          <button type="submit" aria-label="发送当前状态">
+            <Send size={15} />
+          </button>
+        </form>
+      </section>
+
+      <section className="coach-safety-panel">
+        <ShieldCheck size={18} />
+        <div>
+          <strong>安全边界</strong>
+          <p>密码、验证码、API Key、付款确认由你自己输入和确认；Agent 只判断页面状态、提醒风险和验证结果。</p>
+        </div>
+      </section>
+    </Screen>
   );
 }
 
@@ -1827,7 +2992,7 @@ function ModelSettingsPage({ metrics, plan }) {
           <ShieldCheck size={20} />
           <strong>DeepSeek 已由测试方服务端统一配置</strong>
         </div>
-        <p>体验用户不用填写 API Key。继续问 AI 时，当前规划摘要会发送到 CloudBase 云函数，再由云函数调用 DeepSeek。规划数据仍保存在当前设备，云端只承担本次 AI 问答转发。</p>
+        <p>体验用户不用填写 API Key。追问时，当前规划摘要会发送到 CloudBase 云函数，再由云函数调用 DeepSeek。规划数据仍保存在当前设备，云端只承担本次 AI 问答转发。</p>
       </section>
 
       <Panel title="当前模型" icon={<KeyRound size={18} />}>
@@ -2144,17 +3309,6 @@ function VerdictBadge({ children, tone }) {
   return <b className={`verdict-badge ${tone}`}>{children}</b>;
 }
 
-function AiDock({ onClick }) {
-  return (
-    <button className="ai-dock" type="button" aria-label="AI 持续监测" onClick={() => onClick()}>
-      <span className="monitor-radar">
-        <Radar size={18} />
-      </span>
-      <span>AI 监测</span>
-    </button>
-  );
-}
-
 function TrendPreview({ metrics, plan }) {
   const target = metrics.totalTargetPv;
   const points = Array.from({ length: 9 }, (_, index) => {
@@ -2180,26 +3334,6 @@ function TrendPreview({ metrics, plan }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function BottomTabs({ activeTab, setActiveTab }) {
-  const tabs = [
-    ['asset', '资产', <WalletCards size={20} />],
-    ['planning', '规划', <Home size={20} />],
-    ['goal', '目标', <Target size={20} />],
-    ['model', '模型', <KeyRound size={20} />],
-  ];
-
-  return (
-    <nav className="bottom-tabs" aria-label="主导航">
-      {tabs.map(([key, label, icon]) => (
-        <button className={activeTab === key ? 'active' : ''} key={key} type="button" onClick={() => setActiveTab(key)}>
-          {icon}
-          <span>{label}</span>
-        </button>
-      ))}
-    </nav>
   );
 }
 
