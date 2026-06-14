@@ -140,8 +140,8 @@ const optionalGoalPresets = [
 ];
 
 const planningScopeOptions = [
-  { id: 'single', name: '我一个人为自己规划' },
-  { id: 'couple', name: '我和伴侣/夫妻一起规划' },
+  { id: 'single', name: '单身为自己规划' },
+  { id: 'couple', name: '和伴侣 / 夫妻共同规划' },
 ];
 
 const familyResponsibilityOptions = [
@@ -718,19 +718,46 @@ function OnboardingExperience({ onComplete }) {
   const [landingPhase, setLandingPhase] = useState(0);
   const [messages, setMessages] = useState([]);
   const [step, setStep] = useState(null);
-  const [textInput, setTextInput] = useState('');
   const [draftPlan, setDraftPlan] = useState({ ...defaultPlan, goals: [] });
-  const [selectedPlanningScope, setSelectedPlanningScope] = useState([]);
+  const [isDockLoading, setIsDockLoading] = useState(false);
+  const [selectedPlanningScope, setSelectedPlanningScope] = useState('');
   const [selectedResponsibilities, setSelectedResponsibilities] = useState([]);
-  const [selectedCityTier, setSelectedCityTier] = useState([]);
-  const [selectedRequired, setSelectedRequired] = useState([]);
-  const [selectedOptional, setSelectedOptional] = useState([]);
+  const [assetDebtForm, setAssetDebtForm] = useState({ liquidAssets: '', lockedAssets: '', liabilities: '' });
+  const [cashflowForm, setCashflowForm] = useState({ annualIncome: '', annualExpense: '', workYears: '' });
+  const [selectedGoals, setSelectedGoals] = useState([]);
+  const [isCustomGoalOpen, setIsCustomGoalOpen] = useState(false);
+  const [customGoalDraft, setCustomGoalDraft] = useState('');
   const [goalQueue, setGoalQueue] = useState([]);
   const [goalCursor, setGoalCursor] = useState(0);
-  const [goalField, setGoalField] = useState('moneyProfile');
-  const [goalForm, setGoalForm] = useState({ frequency: 'once', amount: '', startYear: '', endYear: '', note: '' });
+  const [goalForm, setGoalForm] = useState({ frequency: '', amount: '', startYear: '', duration: '', priority: '' });
   const [collectedGoals, setCollectedGoals] = useState([]);
+  const [assumptionForm, setAssumptionForm] = useState({ returnRate: '4', discountRate: '3' });
   const feedRef = useRef(null);
+  const transitionTimerRef = useRef(null);
+
+  const responsibilityOptions = selectedPlanningScope === 'single'
+    ? [
+        { id: 'elderCare', name: '赡养老人' },
+        { id: 'other', name: '其他责任' },
+        { id: 'none', name: '暂无' },
+      ]
+    : selectedPlanningScope
+      ? [
+          { id: 'children', name: '有孩子' },
+          { id: 'education', name: '教育支出' },
+          { id: 'elderCare', name: '赡养老人' },
+          { id: 'other', name: '其他责任' },
+          { id: 'none', name: '暂无' },
+        ]
+      : [];
+
+  const intakeGoalOptions = [
+    { id: 'home-upgrade', name: '换房' },
+    { id: 'education', name: '子女教育' },
+    { id: 'retirement', name: '养老' },
+    { id: 'consumption-upgrade', name: '消费升级' },
+    { id: 'career-shift', name: '创业/转型' },
+  ];
 
   useEffect(() => {
     if (stage !== 'landing') return undefined;
@@ -745,7 +772,9 @@ function OnboardingExperience({ onComplete }) {
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, step]);
+  }, [messages, step, isDockLoading]);
+
+  useEffect(() => () => window.clearTimeout(transitionTimerRef.current), []);
 
   function pushMessage(role, text) {
     setMessages((current) => [...current, { id: crypto.randomUUID(), role, text }]);
@@ -754,427 +783,532 @@ function OnboardingExperience({ onComplete }) {
   function ask(nextStep, text) {
     pushMessage('ai', text);
     setStep(nextStep);
-    setTextInput('');
+    setIsDockLoading(false);
+  }
+
+  function transitionAsk(nextStep, text, loadingText = '正在整理下一步', delay = 560) {
+    window.clearTimeout(transitionTimerRef.current);
+    setStep(null);
+    setIsDockLoading(loadingText);
+    transitionTimerRef.current = window.setTimeout(() => ask(nextStep, text), delay);
   }
 
   function startPlanning() {
     setStage('chat');
     pushMessage('user', '我想生成一份家庭财务规划。');
-    window.setTimeout(() => {
-      pushMessage('ai', '我们先做一个 2 分钟家庭画像：家庭阶段、城市、资产、负债、收入支出、预计工作年限和未来目标。信息越贴近真实，后面的 AI 判断越像是在看你自己的账。');
-      window.setTimeout(() => ask('planningScope', '这份规划先按谁来做？'), 650);
-    }, 380);
+    transitionAsk('planningScope', '这份规划先按谁来做？', '正在进入身份判断', 520);
   }
 
-  function confirmPlanningScope() {
-    const scope = selectedPlanningScope[0];
-    if (!scope) return;
-    const nextPlan = normalizePlan({ ...draftPlan, planningScope: scope });
+  function resetGoalForm() {
+    setGoalForm({ frequency: '', amount: '', startYear: '', duration: '', priority: '' });
+  }
+
+  function updateMoneyForm(setter, field, value) {
+    setter((current) => ({ ...current, [field]: cleanNumericInput(value) }));
+  }
+
+  function selectPlanningScope(scope) {
+    setSelectedPlanningScope(scope);
+    setSelectedResponsibilities([]);
+  }
+
+  function toggleResponsibility(id) {
+    setSelectedResponsibilities((current) => {
+      if (id === 'none') return current.includes('none') ? [] : ['none'];
+      const withoutNone = current.filter((item) => item !== 'none');
+      return withoutNone.includes(id) ? withoutNone.filter((item) => item !== id) : [...withoutNone, id];
+    });
+  }
+
+  function responsibilityText(ids) {
+    if (ids.includes('none')) return '暂无';
+    const labels = responsibilityOptions
+      .filter((option) => ids.includes(option.id))
+      .map((option) => option.name);
+    return labels.length ? labels.join('、') : '暂无';
+  }
+
+  function confirmProfile() {
+    if (!selectedPlanningScope || selectedResponsibilities.length === 0) return;
+    const responsibilities = selectedResponsibilities.includes('none') ? [] : selectedResponsibilities;
+    const nextPlan = normalizePlan({ ...draftPlan, planningScope: selectedPlanningScope, familyResponsibilities: responsibilities });
     setDraftPlan(nextPlan);
-    pushMessage('user', selectedOptionNames(planningScopeOptions, selectedPlanningScope));
-    window.setTimeout(() => {
-      ask('familyResponsibilities', '再看家庭责任。下面这些可以多选；如果暂时都没有，也可以直接继续。');
-    }, 420);
+    pushMessage('user', `${selectedOptionNames(planningScopeOptions, [selectedPlanningScope])}；家庭责任：${responsibilityText(selectedResponsibilities)}`);
+    transitionAsk('assetDebt', '先看资产和负债。请一次填三项：流动资产、固定资产、当前总负债。', '正在整理资产问题');
   }
 
-  function confirmResponsibilities() {
-    const nextPlan = normalizePlan({ ...draftPlan, familyResponsibilities: selectedResponsibilities });
+  function confirmAssetDebt() {
+    if (!assetDebtForm.liquidAssets || !assetDebtForm.lockedAssets || !assetDebtForm.liabilities) return;
+    const nextPlan = normalizePlan({
+      ...draftPlan,
+      liquidAssets: toNumber(assetDebtForm.liquidAssets) * 10000,
+      lockedAssets: toNumber(assetDebtForm.lockedAssets) * 10000,
+      liabilities: toNumber(assetDebtForm.liabilities) * 10000,
+    });
+    setDraftPlan(nextPlan);
+    pushMessage('user', `流动资产 ${assetDebtForm.liquidAssets} 万，固定资产 ${assetDebtForm.lockedAssets} 万，当前总负债 ${assetDebtForm.liabilities} 万。`);
+    transitionAsk('cashflow', '接下来算一年真实能留下多少钱。请填写年度收入、年度支出和预计工作年限。', '正在整理现金流问题');
+  }
+
+  function confirmCashflow() {
+    if (!cashflowForm.annualIncome || !cashflowForm.annualExpense || !cashflowForm.workYears) return;
+    const nextPlan = normalizePlan({
+      ...draftPlan,
+      annualIncome: toNumber(cashflowForm.annualIncome) * 10000,
+      annualExpense: toNumber(cashflowForm.annualExpense) * 10000,
+      workYears: toNumber(cashflowForm.workYears),
+    });
+    const annualSurplus = Math.max(0, nextPlan.annualIncome - nextPlan.annualExpense);
     setDraftPlan(nextPlan);
     pushMessage(
       'user',
-      selectedResponsibilities.length > 0
-        ? selectedOptionNames(familyResponsibilityOptions, selectedResponsibilities)
-        : '暂时没有额外家庭责任',
+      `年度收入 ${cashflowForm.annualIncome} 万，年度支出 ${cashflowForm.annualExpense} 万，预计工作 ${cashflowForm.workYears} 年，年度结余约 ${money(annualSurplus)}。`,
     );
-    window.setTimeout(() => ask('cityTier', '你们主要生活在哪类城市？这会影响支出、房产和目标压力。'), 420);
+    transitionAsk('goalSelect', '未来主要想规划哪些目标？可以一次选多个。', '正在整理未来目标');
   }
 
-  function confirmCityTier() {
-    const cityTier = selectedCityTier[0];
-    if (!cityTier) return;
-    const nextPlan = normalizePlan({ ...draftPlan, cityTier });
-    setDraftPlan(nextPlan);
-    pushMessage('user', selectedOptionNames(cityTierOptions, selectedCityTier));
-    window.setTimeout(() => {
-      ask('liquidAssets', '先看真正能动用的钱：现金、存款、基金、股票、理财等，大概有多少？按万元填就行。');
-    }, 420);
+  function toggleGoal(option) {
+    setSelectedGoals((current) => (
+      current.some((goal) => goal.id === option.id)
+        ? current.filter((goal) => goal.id !== option.id)
+        : [...current, { id: option.id, name: option.name, custom: false }]
+    ));
   }
 
-  function answerNumber(config, field) {
-    const value = toNumber(textInput) * (config.multiplier ?? 10000);
-    const nextPlan = normalizePlan({ ...draftPlan, [field]: value });
-    pushMessage('user', `${config.label}${textInput} ${config.unit}`);
-    setDraftPlan(nextPlan);
-    setTextInput('');
-
-    const nextMap = {
-      liquidAssets: () => ask('lockedAssets', `我先记为：灵活资产 ${textInput} 万。再看账面上有、但不太能直接花的钱，比如房子、车位、长期资产，大概有多少？`),
-      lockedAssets: () => {
-        const totalAssets = nextPlan.liquidAssets + nextPlan.lockedAssets;
-        ask('liabilities', `收到，账面总资产约 ${money(totalAssets)}。这些资产背后，还有多少总负债？房贷、车贷、消费贷、信用卡都合并估算。`);
-      },
-      liabilities: () => {
-        const netWorth = nextPlan.assets - nextPlan.liabilities;
-        ask('annualIncome', `收到，当前净资产约 ${money(netWorth)}。接下来，一年税后大概能赚多少钱？`);
-      },
-      annualIncome: () => ask('annualExpense', `年度收入先记为 ${textInput} 万。那一年大概会花掉多少钱？日常、房贷房租、孩子、父母、保险都算进去。`),
-      annualExpense: () => {
-        const annualSurplus = Math.max(0, nextPlan.annualIncome - nextPlan.annualExpense);
-        ask('workYears', `这样算下来，年度可规划结余约 ${money(annualSurplus)}。从现在开始，你预计还会工作多少年？`);
-      },
-      workYears: () => {
-        const annualSurplus = Math.max(0, nextPlan.annualIncome - nextPlan.annualExpense);
-        askRequiredGoals(annualSurplus);
-      },
-    };
-
-    window.setTimeout(nextMap[field], 420);
+  function uniqueGoalName(rawName) {
+    const baseName = rawName.trim().replace(/\s+/g, ' ');
+    if (!baseName) return '';
+    let name = baseName;
+    let index = 2;
+    const existing = new Set(selectedGoals.map((goal) => goal.name));
+    while (existing.has(name)) {
+      name = `${baseName} ${index}`;
+      index += 1;
+    }
+    return name;
   }
 
-  function askRequiredGoals(annualSurplus) {
-    pushMessage('ai', `先按年度可规划结余 ${money(annualSurplus)} 和预计工作年限进入测算。现在看底线目标：未来哪些事情是家庭必须保障、不能轻易放弃的？可以一次选多个。`);
-    setStep('requiredGoals');
+  function addCustomGoal() {
+    const name = uniqueGoalName(customGoalDraft);
+    if (!name) return;
+    setSelectedGoals((current) => [...current, { id: `custom-${crypto.randomUUID()}`, name, custom: true }]);
+    setCustomGoalDraft('');
+    setIsCustomGoalOpen(false);
   }
 
-  function toggleSelection(id, setter) {
-    setter((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
-  }
-
-  function selectSingle(id, setter) {
-    setter([id]);
-  }
-
-  function confirmRequiredGoals() {
-    const queue = requiredGoalPresets.filter((goal) => selectedRequired.includes(goal.id)).map((goal) => ({ ...goal, priority: 'need' }));
+  function confirmGoals() {
+    if (!selectedGoals.length) return;
+    const queue = selectedGoals.map((goal) => ({ ...goal }));
     pushMessage('user', queue.map((goal) => goal.name).join('、'));
     setGoalQueue(queue);
     setGoalCursor(0);
-    setGoalField('moneyProfile');
-    setStep('goalDetail');
-    window.setTimeout(() => askGoalDetail(queue[0], 'moneyProfile'), 420);
+    resetGoalForm();
+    transitionAsk('goalDetail', `补一下「${queue[0].name}」的信息。`, '正在准备目标补充');
   }
 
-  function askGoalDetail(goal, field) {
-    if (!goal) return askOptionalGoals();
-    if (field === 'moneyProfile') {
-      setGoalForm({
-        frequency: goal.kind === 'recurring' ? goal.frequency || 'monthly' : 'once',
-        amount: goal.amount ? String(goal.amount / 10000) : '',
-        startYear: '',
-        endYear: '',
-        note: '',
-      });
-      ask('goalDetail', `补一下「${goal.name}」：先确认它是一次性、每月还是每年支出，并填写金额。`);
-      return;
-    }
-    setGoalForm((current) => ({
-      ...current,
-      startYear: goal.kind === 'oneTime' ? String(goal.year || '') : String(goal.startYear || ''),
-      endYear: goal.kind === 'recurring' ? String(goal.endYear || '') : '',
-      note: '',
-    }));
-    ask('goalDetail', `再补「${goal.name}」的使用时间。补充说明是可选的，可以写“必须保住”“可以延期”或“可以降配”。`);
+  function canSubmitGoalDetail() {
+    if (!goalForm.frequency || !goalForm.amount || !goalForm.startYear || !goalForm.priority) return false;
+    if (goalForm.frequency !== 'once' && !goalForm.duration) return false;
+    return true;
+  }
+
+  function frequencyLabel(value) {
+    return { monthly: '每月', yearly: '每年', once: '一次性' }[value] || '';
+  }
+
+  function priorityLabel(value) {
+    return value === 'need' ? '必须' : '想要';
   }
 
   function answerGoalDetail() {
+    if (!canSubmitGoalDetail()) return;
     const activeGoal = goalQueue[goalCursor];
     if (!activeGoal) return;
-    const nextGoal = { ...activeGoal };
 
-    if (goalField === 'moneyProfile') {
-      const amount = toNumber(goalForm.amount) * 10000;
-      nextGoal.amount = amount;
-      nextGoal.kind = goalForm.frequency === 'once' ? 'oneTime' : 'recurring';
-      nextGoal.frequency = goalForm.frequency === 'yearly' ? 'yearly' : 'monthly';
-      pushMessage(
-        'user',
-        `${goalForm.frequency === 'once' ? '一次性' : goalForm.frequency === 'monthly' ? '每月' : '每年'} ${goalForm.amount} 万`,
-      );
-      updateGoalAndContinue(nextGoal, 'timingProfile');
-      return;
-    }
-
-    if (nextGoal.kind === 'oneTime') {
-      nextGoal.year = toNumber(goalForm.startYear);
-      nextGoal.note = goalForm.note.trim();
-      pushMessage('user', `${goalForm.startYear} 年后使用${goalForm.note.trim() ? `，补充：${goalForm.note.trim()}` : ''}`);
-      finishOneGoal(nextGoal);
-    } else {
-      nextGoal.startYear = toNumber(goalForm.startYear);
-      nextGoal.endYear = toNumber(goalForm.endYear);
-      nextGoal.note = goalForm.note.trim();
-      pushMessage(
-        'user',
-        `${goalForm.startYear} 年后开始，持续到 ${goalForm.endYear} 年后${goalForm.note.trim() ? `，补充：${goalForm.note.trim()}` : ''}`,
-      );
-      finishOneGoal(nextGoal);
-    }
-  }
-
-  function updateGoalAndContinue(nextGoal, nextField) {
-    const nextQueue = goalQueue.map((goal, index) => (index === goalCursor ? nextGoal : goal));
-    setGoalQueue(nextQueue);
-    setGoalField(nextField);
-    setTextInput('');
-    window.setTimeout(() => askGoalDetail(nextGoal, nextField), 420);
-  }
-
-  function finishOneGoal(nextGoal) {
-    const normalized = normalizeGoal({ ...nextGoal, id: `${nextGoal.priority}-${nextGoal.id}` });
+    const amount = toNumber(goalForm.amount) * 10000;
+    const startYear = toNumber(goalForm.startYear);
+    const priority = goalForm.priority === 'need' ? 'need' : 'want';
+    const normalized = normalizeGoal(goalForm.frequency === 'once'
+      ? {
+          id: `${priority}-${activeGoal.id}`,
+          name: activeGoal.name,
+          kind: 'oneTime',
+          priority,
+          amount,
+          year: startYear,
+        }
+      : {
+          id: `${priority}-${activeGoal.id}`,
+          name: activeGoal.name,
+          kind: 'recurring',
+          priority,
+          frequency: goalForm.frequency,
+          amount,
+          startYear,
+          endYear: startYear + toNumber(goalForm.duration),
+        });
     const nextCollected = [...collectedGoals.filter((goal) => goal.id !== normalized.id), normalized];
     setCollectedGoals(nextCollected);
-    setTextInput('');
-    pushMessage('ai', `已记录：${normalized.name}，${normalized.kind === 'recurring' ? `${normalized.startYear} 年后开始，持续到 ${normalized.endYear} 年后` : `${normalized.year} 年后发生`}，属于${normalized.priority === 'need' ? '必须要' : '想要'}目标。`);
+    pushMessage(
+      'user',
+      [
+        normalized.name,
+        priorityLabel(normalized.priority),
+        frequencyLabel(goalForm.frequency),
+        `${goalForm.amount} 万`,
+        `${goalForm.startYear} 年后`,
+        normalized.kind === 'recurring' ? `持续 ${goalForm.duration} 年` : '',
+      ].filter(Boolean).join('，'),
+    );
 
     const nextCursor = goalCursor + 1;
     if (nextCursor < goalQueue.length) {
       setGoalCursor(nextCursor);
-      setGoalField('moneyProfile');
-      window.setTimeout(() => askGoalDetail(goalQueue[nextCursor], 'moneyProfile'), 520);
+      resetGoalForm();
+      transitionAsk('goalDetail', `再补「${goalQueue[nextCursor].name}」的信息。`, '正在切换下一个目标');
       return;
     }
 
-    if (goalQueue[0]?.priority === 'need') {
-      window.setTimeout(askOptionalGoals, 520);
-    } else {
-      window.setTimeout(() => askAssumptions(nextCollected), 520);
-    }
+    transitionAsk('assumptions', '最后确认默认假设。先按预期收益率 4%、折现率 3% 来算；如果不满意，可以直接修改。', '正在整理默认假设');
+    setDraftPlan((current) => ({ ...current, goals: nextCollected }));
   }
 
-  function askOptionalGoals() {
-    pushMessage('ai', '底线目标记录好了。接下来看看想要但可以取舍的目标，可以多选，也可以跳过。');
-    setStep('optionalGoals');
-  }
-
-  function confirmOptionalGoals() {
-    if (selectedOptional.length === 0) {
-      pushMessage('user', '想要目标先跳过');
-      askAssumptions(collectedGoals);
-      return;
-    }
-
-    const queue = optionalGoalPresets.filter((goal) => selectedOptional.includes(goal.id)).map((goal) => ({ ...goal, priority: 'want' }));
-    pushMessage('user', queue.map((goal) => goal.name).join('、'));
-    setGoalQueue(queue);
-    setGoalCursor(0);
-    setGoalField('moneyProfile');
-    setStep('goalDetail');
-    window.setTimeout(() => askGoalDetail(queue[0], 'moneyProfile'), 420);
-  }
-
-  function askAssumptions(goals) {
-    setDraftPlan((current) => ({ ...current, goals }));
-    pushMessage('ai', '我先按保守默认值计算：预期收益率 4%，通胀率和折现率 3%。先按这个算可以吗？');
-    setStep('assumptions');
-  }
-
-  function finishInterview() {
-    pushMessage('user', '按默认先算');
+  function finishInterview(customText = '') {
+    const returnRate = toNumber(assumptionForm.returnRate || 4);
+    const discountRate = toNumber(assumptionForm.discountRate || 3);
+    pushMessage('user', customText || `按默认先算：预期收益率 ${returnRate}%，折现率 ${discountRate}%。`);
     setStage('loading');
     setStep(null);
-    window.setTimeout(() => onComplete({ ...draftPlan, goals: collectedGoals, returnRate: 4, inflationRate: 3, discountRate: 3 }), 3100);
+    setIsDockLoading(false);
+    window.setTimeout(() => {
+      onComplete({
+        ...draftPlan,
+        goals: collectedGoals,
+        returnRate,
+        inflationRate: 3,
+        discountRate,
+      });
+    }, 3100);
+  }
+
+  function submitEditedAssumptions() {
+    finishInterview(`预期收益率 ${assumptionForm.returnRate || 4}%，折现率 ${assumptionForm.discountRate || 3}%。`);
   }
 
   function renderDock() {
+    if (isDockLoading) {
+      return (
+        <div className="onboarding-input-card onboarding-loading-dock">
+          <span>{isDockLoading}</span>
+          <span className="loading-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        </div>
+      );
+    }
+
     if (!step) return null;
 
     if (step === 'planningScope') {
       return (
-        <ChoicePanel
-          cta="继续"
-          disabled={selectedPlanningScope.length === 0}
-          onConfirm={confirmPlanningScope}
-          options={planningScopeOptions}
-          selected={selectedPlanningScope}
-          toggle={(id) => selectSingle(id, setSelectedPlanningScope)}
-        />
-      );
-    }
-
-    if (step === 'familyResponsibilities') {
-      return (
-        <ChoicePanel
-          cta={selectedResponsibilities.length > 0 ? '继续' : '暂时没有，继续'}
-          onConfirm={confirmResponsibilities}
-          options={familyResponsibilityOptions}
-          selected={selectedResponsibilities}
-          toggle={(id) => toggleSelection(id, setSelectedResponsibilities)}
-        />
-      );
-    }
-
-    if (step === 'cityTier') {
-      return (
-        <ChoicePanel
-          cta="继续"
-          disabled={selectedCityTier.length === 0}
-          onConfirm={confirmCityTier}
-          options={cityTierOptions}
-          selected={selectedCityTier}
-          toggle={(id) => selectSingle(id, setSelectedCityTier)}
-        />
-      );
-    }
-
-    if (['liquidAssets', 'lockedAssets', 'liabilities', 'annualIncome', 'annualExpense', 'workYears'].includes(step)) {
-      const config = onboardingInputConfig(step);
-      const submit = () => answerNumber(config, step);
-
-      return (
-        <div className="onboarding-input-card">
+        <div className="onboarding-input-card profile-composer">
           <div className="input-card-copy">
-            <strong>{config.title}</strong>
-            <span>{config.helper}</span>
+            <strong>规划对象</strong>
           </div>
-          <div className="quick-row">
-            {config.quickValues.map((value) => (
-              <button key={value} type="button" onClick={() => setTextInput(value)}>
-                {value} {config.unit}
+          <div className="profile-choice-grid">
+            {planningScopeOptions.map((option) => (
+              <button
+                className={selectedPlanningScope === option.id ? 'active' : ''}
+                key={option.id}
+                type="button"
+                onClick={() => selectPlanningScope(option.id)}
+              >
+                {option.name}
               </button>
             ))}
           </div>
-          <label className="chat-input">
-            <input
-              autoFocus
-              inputMode="decimal"
-              placeholder={config.placeholder}
-              value={textInput}
-              onChange={(event) => setTextInput(cleanNumericInput(event.target.value))}
-            />
-            <em>{config.unit}</em>
-            <button disabled={!textInput} type="button" onClick={submit}>
-              <Send size={16} />
+
+          {selectedPlanningScope && (
+            <div className={`linked-responsibilities ${selectedPlanningScope === 'single' ? 'from-single' : 'from-couple'}`}>
+              <span>家庭责任</span>
+              <div className="choice-chip-row">
+                {responsibilityOptions.map((option) => (
+                  <button
+                    className={selectedResponsibilities.includes(option.id) ? 'selected' : ''}
+                    key={option.id}
+                    type="button"
+                    onClick={() => toggleResponsibility(option.id)}
+                  >
+                    {option.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedPlanningScope && (
+            <button className="onboarding-primary" disabled={selectedResponsibilities.length === 0} type="button" onClick={confirmProfile}>
+              发送
             </button>
-          </label>
+          )}
+        </div>
+      );
+    }
+
+    if (step === 'assetDebt') {
+      return (
+        <div className="onboarding-input-card grouped-input-card">
+          <div className="input-card-copy">
+            <strong>资产与负债</strong>
+          </div>
+          <div className="asset-debt-list">
+            <OnboardingNumberField
+              label="流动资产"
+              placeholder="现金、存款、基金、股票、理财合计"
+              unit="万元"
+              value={assetDebtForm.liquidAssets}
+              onChange={(value) => updateMoneyForm(setAssetDebtForm, 'liquidAssets', value)}
+            />
+            <OnboardingNumberField
+              label="固定资产"
+              placeholder="房产等流动性较低资产估值"
+              unit="万元"
+              value={assetDebtForm.lockedAssets}
+              onChange={(value) => updateMoneyForm(setAssetDebtForm, 'lockedAssets', value)}
+            />
+            <OnboardingNumberField
+              label="当前总负债"
+              placeholder="所有贷款和信用负债合计"
+              unit="万元"
+              value={assetDebtForm.liabilities}
+              onChange={(value) => updateMoneyForm(setAssetDebtForm, 'liabilities', value)}
+            />
+          </div>
+          <button
+            className="onboarding-primary"
+            disabled={!assetDebtForm.liquidAssets || !assetDebtForm.lockedAssets || !assetDebtForm.liabilities}
+            type="button"
+            onClick={confirmAssetDebt}
+          >
+            发送
+          </button>
+        </div>
+      );
+    }
+
+    if (step === 'cashflow') {
+      const annualSurplus = Math.max(0, (toNumber(cashflowForm.annualIncome) - toNumber(cashflowForm.annualExpense)));
+
+      return (
+        <div className="onboarding-input-card grouped-input-card">
+          <div className="input-card-copy">
+            <strong>年度收入与支出</strong>
+          </div>
+          <div className="form-grid two">
+            <OnboardingNumberField
+              label="年度收入"
+              placeholder="年度收入"
+              unit="万元/年"
+              value={cashflowForm.annualIncome}
+              onChange={(value) => updateMoneyForm(setCashflowForm, 'annualIncome', value)}
+            />
+            <OnboardingNumberField
+              label="年度支出"
+              placeholder="年度支出"
+              unit="万元/年"
+              value={cashflowForm.annualExpense}
+              onChange={(value) => updateMoneyForm(setCashflowForm, 'annualExpense', value)}
+            />
+          </div>
+          <OnboardingNumberField
+            label="预计工作年限"
+            placeholder="从现在开始还能工作几年"
+            unit="年"
+            value={cashflowForm.workYears}
+            onChange={(value) => updateMoneyForm(setCashflowForm, 'workYears', value)}
+          />
+          {cashflowForm.annualIncome && cashflowForm.annualExpense && (
+            <p className="dock-summary">年度结余约 {annualSurplus.toFixed(0)} 万，月均结余约 {(annualSurplus / 12).toFixed(1)} 万。</p>
+          )}
+          <button
+            className="onboarding-primary"
+            disabled={!cashflowForm.annualIncome || !cashflowForm.annualExpense || !cashflowForm.workYears}
+            type="button"
+            onClick={confirmCashflow}
+          >
+            发送
+          </button>
+        </div>
+      );
+    }
+
+    if (step === 'goalSelect') {
+      return (
+        <div className="onboarding-input-card goal-select-card">
+          <div className="input-card-copy">
+            <strong>未来目标</strong>
+            <span>可以一次选择多个，也可以添加多个自定义目标。</span>
+          </div>
+          <div className="choice-chip-row">
+            {intakeGoalOptions.map((option) => {
+              const isSelected = selectedGoals.some((goal) => goal.id === option.id);
+              return (
+                <button className={isSelected ? 'selected' : ''} key={option.id} type="button" onClick={() => toggleGoal(option)}>
+                  {isSelected ? `✓ ${option.name}` : option.name}
+                </button>
+              );
+            })}
+            {selectedGoals.filter((goal) => goal.custom).map((goal) => (
+              <button className="selected" key={goal.id} type="button" onClick={() => setSelectedGoals((current) => current.filter((item) => item.id !== goal.id))}>
+                ✓ {goal.name}
+              </button>
+            ))}
+          </div>
+          <button className="secondary-action" type="button" onClick={() => setIsCustomGoalOpen(true)}>
+            <Plus size={15} />
+            添加其他目标
+          </button>
+          <button className="onboarding-primary" disabled={selectedGoals.length === 0} type="button" onClick={confirmGoals}>
+            发送
+          </button>
         </div>
       );
     }
 
     if (step === 'goalDetail') {
       const activeGoal = goalQueue[goalCursor];
-      const isMoneyProfile = goalField === 'moneyProfile';
-      const isRecurring = goalForm.frequency !== 'once';
+      const isRecurring = goalForm.frequency === 'monthly' || goalForm.frequency === 'yearly';
 
       return (
-        <div className="onboarding-input-card goal-profile-card">
+        <div className="onboarding-input-card goal-detail-composer">
           <div className="input-card-copy">
-            <strong>{activeGoal?.name}</strong>
-            <span>{isMoneyProfile ? '选择支出方式，并填写金额。' : '填写开始和结束时间，补充说明可选。'}</span>
+            <strong>补充「{activeGoal?.name}」</strong>
           </div>
-
-          {isMoneyProfile ? (
-            <>
-              <div className="frequency-segmented">
-                {[
-                  ['once', '一次性'],
-                  ['monthly', '每月'],
-                  ['yearly', '每年'],
-                ].map(([value, label]) => (
-                  <button
-                    className={goalForm.frequency === value ? 'active' : ''}
-                    key={value}
-                    type="button"
-                    onClick={() => setGoalForm((current) => ({ ...current, frequency: value }))}
-                  >
-                    {label}
-                  </button>
-                ))}
+          <section className="goal-dimension-card">
+            <strong>金额与周期</strong>
+            <div className="goal-money-row">
+              <div className="field-shell">
+                <span>支出周期</span>
+                <div className="frequency-segmented">
+                  {[
+                    ['monthly', '每月'],
+                    ['yearly', '每年'],
+                    ['once', '一次性'],
+                  ].map(([value, label]) => (
+                    <button
+                      className={goalForm.frequency === value ? 'active' : ''}
+                      key={value}
+                      type="button"
+                      onClick={() => setGoalForm((current) => ({ ...current, frequency: value, duration: value === 'once' ? '' : current.duration }))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <label className="chat-input">
-                <input
-                  autoFocus
-                  inputMode="decimal"
-                  placeholder="填写金额"
-                  value={goalForm.amount}
-                  onChange={(event) => setGoalForm((current) => ({ ...current, amount: cleanNumericInput(event.target.value) }))}
-                />
-                <em>万元</em>
-                <button disabled={!goalForm.amount} type="button" onClick={answerGoalDetail}>
-                  <Send size={16} />
+              <OnboardingNumberField
+                label={goalForm.frequency === 'once' ? '目标金额' : '金额'}
+                placeholder={goalForm.frequency === 'once' ? '目标金额' : '每期金额'}
+                unit="万元"
+                value={goalForm.amount}
+                onChange={(value) => setGoalForm((current) => ({ ...current, amount: cleanNumericInput(value) }))}
+              />
+            </div>
+          </section>
+          <section className="goal-dimension-card muted">
+            <strong>时间安排</strong>
+            <div className="form-grid two">
+              <OnboardingNumberField
+                label="发生时间"
+                placeholder="几年后"
+                unit="年后"
+                value={goalForm.startYear}
+                onChange={(value) => setGoalForm((current) => ({ ...current, startYear: cleanNumericInput(value) }))}
+              />
+              <OnboardingNumberField
+                disabled={!isRecurring}
+                label="持续时间"
+                placeholder={isRecurring ? '持续几年' : '一次性无持续'}
+                unit="年"
+                value={goalForm.duration}
+                onChange={(value) => setGoalForm((current) => ({ ...current, duration: cleanNumericInput(value) }))}
+              />
+            </div>
+          </section>
+          <section className="goal-dimension-card">
+            <strong>目标属性</strong>
+            <div className="goal-priority-row">
+              {[
+                ['need', '必须'],
+                ['want', '想要'],
+              ].map(([value, label]) => (
+                <button
+                  className={goalForm.priority === value ? 'selected' : ''}
+                  key={value}
+                  type="button"
+                  onClick={() => setGoalForm((current) => ({ ...current, priority: value }))}
+                >
+                  {label}
                 </button>
-              </label>
-            </>
-          ) : (
-            <>
-              <div className={isRecurring ? 'time-grid two' : 'time-grid'}>
-                <label>
-                  <span>{isRecurring ? '几年后开始' : '几年后使用'}</span>
-                  <input
-                    autoFocus
-                    inputMode="decimal"
-                    value={goalForm.startYear}
-                    onChange={(event) => setGoalForm((current) => ({ ...current, startYear: cleanNumericInput(event.target.value) }))}
-                  />
-                </label>
-                {isRecurring && (
-                  <label>
-                    <span>持续到几年后</span>
-                    <input
-                      inputMode="decimal"
-                      value={goalForm.endYear}
-                      onChange={(event) => setGoalForm((current) => ({ ...current, endYear: cleanNumericInput(event.target.value) }))}
-                    />
-                  </label>
-                )}
-              </div>
-              <label className="optional-note">
-                <span>补充说明（可选）</span>
-                <input
-                  placeholder="例如 必须保住 / 可以延期 / 可以降配"
-                  value={goalForm.note}
-                  onChange={(event) => setGoalForm((current) => ({ ...current, note: event.target.value }))}
-                />
-              </label>
-              <button
-                className="onboarding-primary"
-                disabled={!goalForm.startYear || (isRecurring && !goalForm.endYear)}
-                type="button"
-                onClick={answerGoalDetail}
-              >
-                记录这个目标
-                <ArrowRight size={16} />
-              </button>
-            </>
-          )}
+              ))}
+            </div>
+          </section>
+          <button className="onboarding-primary" disabled={!canSubmitGoalDetail()} type="button" onClick={answerGoalDetail}>
+            发送
+          </button>
         </div>
-      );
-    }
-
-    if (step === 'requiredGoals') {
-      return (
-        <ChoicePanel
-          cta="继续补全必要目标"
-          disabled={selectedRequired.length === 0}
-          onConfirm={confirmRequiredGoals}
-          options={requiredGoalPresets}
-          selected={selectedRequired}
-          toggle={(id) => toggleSelection(id, setSelectedRequired)}
-        />
-      );
-    }
-
-    if (step === 'optionalGoals') {
-      return (
-        <ChoicePanel
-          cta={selectedOptional.length > 0 ? '继续补全想要目标' : '先跳过想要目标'}
-          onConfirm={confirmOptionalGoals}
-          options={optionalGoalPresets}
-          selected={selectedOptional}
-          toggle={(id) => toggleSelection(id, setSelectedOptional)}
-        />
       );
     }
 
     if (step === 'assumptions') {
       return (
         <div className="onboarding-input-card">
-          <div className="assumption-row">
-            <span>收益率 4%</span>
-            <span>通胀率 3%</span>
-            <span>折现率 3%</span>
+          <div className="input-card-copy">
+            <strong>默认假设</strong>
           </div>
-          <button className="onboarding-primary" type="button" onClick={finishInterview}>
-            开始生成规划
+          <div className="assumption-row compact">
+            <span>预期收益率 {assumptionForm.returnRate || 4}%</span>
+            <span>折现率 {assumptionForm.discountRate || 3}%</span>
+          </div>
+          <div className="button-row">
+            <button className="secondary-action" type="button" onClick={() => setStep('editAssumptions')}>
+              修改
+            </button>
+            <button className="onboarding-primary" type="button" onClick={() => finishInterview()}>
+              开始生成规划
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (step === 'editAssumptions') {
+      return (
+        <div className="onboarding-input-card grouped-input-card">
+          <div className="input-card-copy">
+            <strong>修改假设</strong>
+          </div>
+          <div className="form-grid two">
+            <OnboardingNumberField
+              label="预期收益率"
+              placeholder="例如 4"
+              unit="%"
+              value={assumptionForm.returnRate}
+              onChange={(value) => updateMoneyForm(setAssumptionForm, 'returnRate', value)}
+            />
+            <OnboardingNumberField
+              label="折现率"
+              placeholder="例如 3"
+              unit="%"
+              value={assumptionForm.discountRate}
+              onChange={(value) => updateMoneyForm(setAssumptionForm, 'discountRate', value)}
+            />
+          </div>
+          <button className="onboarding-primary" type="button" onClick={submitEditedAssumptions}>
+            保存并计算
             <ArrowRight size={16} />
           </button>
         </div>
@@ -1182,6 +1316,39 @@ function OnboardingExperience({ onComplete }) {
     }
 
     return null;
+  }
+
+  function renderCustomGoalDialog() {
+    if (!isCustomGoalOpen) return null;
+
+    return (
+      <div className="custom-goal-backdrop" role="presentation" onClick={() => setIsCustomGoalOpen(false)}>
+        <section className="custom-goal-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-goal-title" onClick={(event) => event.stopPropagation()}>
+          <h2 id="custom-goal-title">这个目标具体是什么？</h2>
+          <p>可以添加多个自定义目标，每个目标后面都会单独补充金额和时间。</p>
+          <label className="form-field">
+            <span>目标名称</span>
+            <input
+              autoFocus
+              placeholder="例如：父母医疗、进修学习、创业启动金"
+              value={customGoalDraft}
+              onChange={(event) => setCustomGoalDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') addCustomGoal();
+              }}
+            />
+          </label>
+          <div className="button-row">
+            <button className="secondary-action" type="button" onClick={() => setIsCustomGoalOpen(false)}>
+              取消
+            </button>
+            <button className="onboarding-primary" disabled={!customGoalDraft.trim()} type="button" onClick={addCustomGoal}>
+              添加
+            </button>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   if (stage === 'landing') {
@@ -1276,6 +1443,7 @@ function OnboardingExperience({ onComplete }) {
           ))}
         </div>
         {renderDock()}
+        {renderCustomGoalDialog()}
       </section>
     </div>
   );
@@ -1853,6 +2021,24 @@ function SupplementExperience({ initialQuestion = '', initialMode = '', modelSet
         {renderSupplementDock()}
       </section>
     </div>
+  );
+}
+
+function OnboardingNumberField({ disabled = false, label, onChange, placeholder, unit, value }) {
+  return (
+    <label className={`form-field ${disabled ? 'disabled' : ''}`}>
+      <span>{label}</span>
+      <div className="field-input-wrap">
+        <input
+          disabled={disabled}
+          inputMode="decimal"
+          placeholder={placeholder}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <em>{unit}</em>
+      </div>
+    </label>
   );
 }
 
